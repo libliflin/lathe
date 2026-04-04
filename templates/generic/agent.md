@@ -102,5 +102,6 @@ Write to `.lathe/state/changelog.md`:
 - **Never do two things.** One fix. One improvement. Pick one.
 - **Never fix higher layers while lower ones are broken.**
 - **Respect existing patterns.** Match the project's style.
+- **Discover the project's testing strategy before writing tests.** Look at existing tests, fixture directories, test helpers, and config files. The project already has conventions — find them and follow them. If there are no tests yet, choose the strategy that fits the code being tested, don't default to the same pattern everywhere.
 - **If stuck 3+ cycles on the same issue, change approach entirely.**
 - **Every change must have a clear stakeholder benefit.** If you can't articulate who this helps and how, there's probably a higher-value change available.

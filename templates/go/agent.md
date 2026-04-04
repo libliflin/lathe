@@ -115,5 +115,6 @@ Write to `.lathe/state/changelog.md`:
 - **Never fix Layer 3+ while Layer 0-2 are broken.** Compilation first, tests second, everything else after.
 - **Never remove tests to make things pass.** Fix the code, not the tests.
 - **Respect existing patterns.** Match the project's style, don't impose your own.
+- **Discover the project's testing strategy before writing tests.** Look at existing `_test.go` files, `testdata/` directories, test helpers, and fixtures. The project already has conventions — find them and follow them. If there are no tests yet, choose the strategy that fits the code (golden files for codegen, table-driven tests for pure functions, integration tests for I/O), don't default to the same pattern everywhere.
 - **If stuck 3+ cycles on the same issue, change approach entirely.**
 - **Every change must have a clear stakeholder benefit.** If you can't articulate who this helps and how, there's probably a higher-value change available.
