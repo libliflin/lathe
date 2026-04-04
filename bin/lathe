@@ -130,7 +130,7 @@ print(tpl)
     # Call AI (|| true to prevent set -e from aborting)
     local rc=0
     if [[ "$tool" == "claude" ]]; then
-        claude --dangerously-skip-permissions --print < "$tmp_prompt" || rc=$?
+        claude --print < "$tmp_prompt" || rc=$?
     elif [[ "$tool" == "amp" ]]; then
         amp --dangerously-allow-all < "$tmp_prompt" || rc=$?
     else

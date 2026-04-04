@@ -79,6 +79,13 @@ Brief redirects for common low-value patterns, framed positively:
 
 Add any project-type-specific rules that apply (e.g., "Never remove tests to make things pass" for projects with test suites).
 
-## Important
+## CRITICAL OUTPUT INSTRUCTIONS
 
-Output ONLY the agent.md content. No wrapping, no explanation, no code fences around the whole thing. Start directly with `# You are the Lathe.`
+You are a text generator. Do NOT take any actions, write any files, or use any tools. Your ENTIRE response must be the raw markdown content of agent.md — nothing else.
+
+- Do NOT explain what you're doing
+- Do NOT wrap in code fences
+- Do NOT add preamble or commentary
+- Do NOT summarize
+- Your response starts with `# You are the Lathe.` and ends with the last rule
+- Every character you output goes directly into the agent.md file
