@@ -106,10 +106,6 @@ generate_agent() {
     local project_type="$2"
     local context="$3"
 
-    # Load meta-prompt and substitute context + priority stack
-    local meta_prompt
-    meta_prompt=$(cat "$LATHE_HOME/templates/meta-prompt.md")
-
     local priority_stack=""
     if [[ -f "$LATHE_HOME/templates/$project_type/priority-stack.md" ]]; then
         priority_stack=$(cat "$LATHE_HOME/templates/$project_type/priority-stack.md")
@@ -117,16 +113,27 @@ generate_agent() {
         priority_stack=$(cat "$LATHE_HOME/templates/generic/priority-stack.md")
     fi
 
-    # Build final prompt
-    local prompt="${meta_prompt//\{\{PROJECT_CONTEXT\}\}/$context}"
-    prompt="${prompt//\{\{PRIORITY_STACK\}\}/$priority_stack}"
+    # Build prompt via temp file to avoid bash substitution issues
+    local tmp_prompt
+    tmp_prompt=$(mktemp)
+    trap "rm -f '$tmp_prompt'" RETURN
+
+    python3 -c "
+import sys
+tpl = open('$LATHE_HOME/templates/meta-prompt.md').read()
+ctx = sys.stdin.read()
+stack = open('/dev/fd/3').read()
+tpl = tpl.replace('{{PROJECT_CONTEXT}}', ctx)
+tpl = tpl.replace('{{PRIORITY_STACK}}', stack)
+print(tpl)
+" 3<<< "$priority_stack" <<< "$context" > "$tmp_prompt"
 
     # Call AI
     local exit_code=0
     if [[ "$tool" == "claude" ]]; then
-        echo "$prompt" | claude --dangerously-skip-permissions --print 2>/dev/null || exit_code=$?
+        claude --dangerously-skip-permissions --print < "$tmp_prompt" 2>/dev/null || exit_code=$?
     elif [[ "$tool" == "amp" ]]; then
-        echo "$prompt" | amp --dangerously-allow-all 2>/dev/null || exit_code=$?
+        amp --dangerously-allow-all < "$tmp_prompt" 2>/dev/null || exit_code=$?
     else
         return 1
     fi
