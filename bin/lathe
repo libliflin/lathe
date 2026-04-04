@@ -6,7 +6,7 @@
 #   lathe init [--type go|python|node|k8s|generic]
 #   lathe start [--cycles N] [--tool claude|amp]
 #   lathe stop
-#   lathe status
+#   lathe status [--follow]
 #   lathe logs [--follow]
 
 set -euo pipefail
@@ -156,7 +156,7 @@ cmd_stop() {
 cmd_status() {
     ensure_initialized
     source "$LATHE_HOME/engine/loop.sh"
-    engine_status
+    engine_status "$@"
 }
 
 cmd_logs() {
@@ -173,7 +173,7 @@ case "${1:-help}" in
     init)    shift; cmd_init "$@" ;;
     start)   shift; cmd_start "$@" ;;
     stop)    cmd_stop ;;
-    status)  cmd_status ;;
+    status)  shift; cmd_status "$@" ;;
     logs)    shift 2>/dev/null || true; cmd_logs "$@" ;;
     help|--help|-h)
         echo "Usage: lathe <command> [options]"
@@ -182,7 +182,7 @@ case "${1:-help}" in
         echo "  init   [--type TYPE]              Initialize project for lathe"
         echo "  start  [--cycles N] [--tool NAME] Start improvement loop"
         echo "  stop                              Stop running loop"
-        echo "  status                            Show current state"
+        echo "  status [--follow]                 Show current state"
         echo "  logs   [--follow]                 View cycle logs"
         echo ""
         echo "Project types: go, python, node, rust, k8s, generic"

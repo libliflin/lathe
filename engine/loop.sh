@@ -309,6 +309,28 @@ engine_stop() {
 }
 
 engine_status() {
+    local follow=false
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --follow|-f) follow=true; shift ;;
+            *)           shift ;;
+        esac
+    done
+
+    if $follow; then
+        trap 'exit 0' INT
+        while true; do
+            clear
+            _print_status
+            sleep 15 &
+            wait $! || exit 0
+        done
+    else
+        _print_status
+    fi
+}
+
+_print_status() {
     local project_name
     project_name=$(basename "$(pwd)")
     echo "=== Lathe: $project_name ==="
