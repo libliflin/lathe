@@ -3,7 +3,7 @@
 # Point it at any repo and start turning.
 #
 # Usage:
-#   lathe init [--type go|python|node|k8s|generic]
+#   lathe init [--type go|python|node|k8s|generic] [--tool claude|amp]
 #   lathe start [--cycles N] [--tool claude|amp]
 #   lathe stop
 #   lathe status [--follow]
@@ -54,12 +54,94 @@ detect_type() {
     fi
 }
 
+collect_project_context() {
+    local project_type="$1"
+    local repo_name
+    repo_name=$(basename "$(pwd)")
+
+    echo "Project: $repo_name"
+    echo "Type: $project_type"
+    echo ""
+
+    # README
+    if [[ -f "README.md" ]]; then
+        echo "=== README.md ==="
+        head -100 README.md
+        echo ""
+    fi
+
+    # Top-level files and directories
+    echo "=== Top-level files ==="
+    ls -1
+    echo ""
+
+    # Dependency / config files
+    for f in go.mod go.sum package.json Cargo.toml pyproject.toml setup.py requirements.txt Makefile Dockerfile docker-compose.yml; do
+        if [[ -f "$f" ]]; then
+            echo "=== $f ==="
+            head -30 "$f"
+            echo ""
+        fi
+    done
+
+    # cmd/ directory (indicates CLI)
+    if [[ -d "cmd" ]]; then
+        echo "=== cmd/ ==="
+        ls -1 cmd/
+        echo ""
+    fi
+
+    # deploy/charts directory (indicates K8s)
+    for d in deploy charts platform/charts; do
+        if [[ -d "$d" ]]; then
+            echo "=== $d/ ==="
+            ls -1 "$d/"
+            echo ""
+        fi
+    done
+}
+
+generate_agent() {
+    local tool="$1"
+    local project_type="$2"
+    local context="$3"
+
+    # Load meta-prompt and substitute context + priority stack
+    local meta_prompt
+    meta_prompt=$(cat "$LATHE_HOME/templates/meta-prompt.md")
+
+    local priority_stack=""
+    if [[ -f "$LATHE_HOME/templates/$project_type/priority-stack.md" ]]; then
+        priority_stack=$(cat "$LATHE_HOME/templates/$project_type/priority-stack.md")
+    elif [[ -f "$LATHE_HOME/templates/generic/priority-stack.md" ]]; then
+        priority_stack=$(cat "$LATHE_HOME/templates/generic/priority-stack.md")
+    fi
+
+    # Build final prompt
+    local prompt="${meta_prompt//\{\{PROJECT_CONTEXT\}\}/$context}"
+    prompt="${prompt//\{\{PRIORITY_STACK\}\}/$priority_stack}"
+
+    # Call AI
+    local exit_code=0
+    if [[ "$tool" == "claude" ]]; then
+        echo "$prompt" | claude --dangerously-skip-permissions --print 2>/dev/null || exit_code=$?
+    elif [[ "$tool" == "amp" ]]; then
+        echo "$prompt" | amp --dangerously-allow-all 2>/dev/null || exit_code=$?
+    else
+        return 1
+    fi
+
+    return "$exit_code"
+}
+
 cmd_init() {
     local project_type=""
+    local tool="claude"
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --type) project_type="$2"; shift 2 ;;
+            --tool) tool="$2"; shift 2 ;;
             *)      die "Unknown option: $1" ;;
         esac
     done
@@ -73,68 +155,89 @@ cmd_init() {
     if [[ ! -d "$template_dir" ]]; then
         echo "  No template for '$project_type', falling back to generic"
         template_dir="$LATHE_HOME/templates/generic"
+        project_type="generic"
     fi
 
     [[ -d "$template_dir" ]] || die "Template directory not found: $template_dir"
 
+    local reinit=false
     if [[ -d "$LATHE_DIR" ]]; then
-        echo "  .lathe/ already exists. Updating skills only (agent.md preserved)."
-        # Refresh skills from template, don't overwrite agent.md or snapshot.sh
-        if [[ -d "$template_dir/skills" ]]; then
-            mkdir -p "$LATHE_DIR/skills"
-            cp "$template_dir/skills/"*.md "$LATHE_DIR/skills/" 2>/dev/null || true
-            echo "  Skills updated from $project_type template."
-        fi
+        reinit=true
+        echo "  Re-initializing (state preserved)."
     else
         echo ""
         echo "  ╔═══════════════════════════════════════════╗"
         echo "  ║  LATHE — initializing project              ║"
         echo "  ╚═══════════════════════════════════════════╝"
-        echo ""
+    fi
+    echo ""
 
-        mkdir -p "$LATHE_DIR/skills" "$LATHE_DIR/state/logs" "$LATHE_DIR/state/history"
+    mkdir -p "$LATHE_DIR/skills" "$LATHE_DIR/state/logs" "$LATHE_DIR/state/history"
 
-        # Copy template files
-        cp "$template_dir/agent.md" "$LATHE_DIR/agent.md"
-        cp "$template_dir/snapshot.sh" "$LATHE_DIR/snapshot.sh"
-        chmod +x "$LATHE_DIR/snapshot.sh"
+    # Copy snapshot and skills from template
+    cp "$template_dir/snapshot.sh" "$LATHE_DIR/snapshot.sh"
+    chmod +x "$LATHE_DIR/snapshot.sh"
 
-        if [[ -d "$template_dir/skills" ]]; then
-            cp "$template_dir/skills/"*.md "$LATHE_DIR/skills/" 2>/dev/null || true
-        fi
+    if [[ -d "$template_dir/skills" ]]; then
+        cp "$template_dir/skills/"*.md "$LATHE_DIR/skills/" 2>/dev/null || true
+    fi
 
-        # Customize agent.md with project info
-        local repo_name
-        repo_name=$(basename "$(pwd)")
-        local repo_desc=""
-        if [[ -f "README.md" ]]; then
-            repo_desc=$(head -5 README.md | grep -v '^#' | head -1 | tr -d '\n' || true)
-        fi
-        # Substitute placeholders
-        sed -i '' "s|{{PROJECT_NAME}}|$repo_name|g" "$LATHE_DIR/agent.md" 2>/dev/null || true
-        sed -i '' "s|{{PROJECT_TYPE}}|$project_type|g" "$LATHE_DIR/agent.md" 2>/dev/null || true
-        sed -i '' "s|{{PROJECT_DESC}}|$repo_desc|g" "$LATHE_DIR/agent.md" 2>/dev/null || true
+    # Generate agent.md via AI
+    echo "  Analyzing project and generating agent ..."
+    local context
+    context=$(collect_project_context "$project_type")
 
-        # Add state/ to .gitignore if not already there
-        if [[ -f .gitignore ]]; then
-            if ! grep -q '\.lathe/state/' .gitignore 2>/dev/null; then
-                echo "" >> .gitignore
-                echo "# Lathe runtime state" >> .gitignore
-                echo ".lathe/state/" >> .gitignore
-            fi
+    local agent_content
+    if agent_content=$(generate_agent "$tool" "$project_type" "$context"); then
+        if [[ -n "$agent_content" ]] && echo "$agent_content" | grep -q "You are the Lathe"; then
+            echo "$agent_content" > "$LATHE_DIR/agent.md"
+            echo "  Agent generated via $tool."
         else
-            echo "# Lathe runtime state" > .gitignore
+            echo "  WARN: AI output didn't look right. Falling back to static template."
+            _fallback_agent "$template_dir" "$project_type"
+        fi
+    else
+        echo "  WARN: AI generation failed. Falling back to static template."
+        _fallback_agent "$template_dir" "$project_type"
+    fi
+
+    # Add state/ to .gitignore if not already there
+    if [[ -f .gitignore ]]; then
+        if ! grep -q '\.lathe/state/' .gitignore 2>/dev/null; then
+            echo "" >> .gitignore
+            echo "# Lathe runtime state" >> .gitignore
             echo ".lathe/state/" >> .gitignore
         fi
-
-        echo "  Created: $LATHE_DIR/"
-        echo "  Agent:   $LATHE_DIR/agent.md"
-        echo "  Skills:  $LATHE_DIR/skills/"
-        echo "  Snap:    $LATHE_DIR/snapshot.sh"
-        echo ""
-        echo "  Edit agent.md to customize the agent's identity and goals."
-        echo "  Run 'lathe start' to begin."
+    else
+        echo "# Lathe runtime state" > .gitignore
+        echo ".lathe/state/" >> .gitignore
     fi
+
+    if $reinit; then
+        echo "  Updated: agent.md, snapshot.sh, skills"
+    else
+        echo "  Created: $LATHE_DIR/"
+    fi
+    echo "  Agent:   $LATHE_DIR/agent.md"
+    echo "  Skills:  $LATHE_DIR/skills/"
+    echo "  Snap:    $LATHE_DIR/snapshot.sh"
+    echo ""
+    echo "  Run 'lathe start' to begin."
+}
+
+_fallback_agent() {
+    local template_dir="$1"
+    local project_type="$2"
+    local repo_name
+    repo_name=$(basename "$(pwd)")
+    local repo_desc=""
+    if [[ -f "README.md" ]]; then
+        repo_desc=$(head -5 README.md | grep -v '^#' | head -1 | tr -d '\n' || true)
+    fi
+    cp "$template_dir/agent.md" "$LATHE_DIR/agent.md"
+    sed -i '' "s|{{PROJECT_NAME}}|$repo_name|g" "$LATHE_DIR/agent.md" 2>/dev/null || true
+    sed -i '' "s|{{PROJECT_TYPE}}|$project_type|g" "$LATHE_DIR/agent.md" 2>/dev/null || true
+    sed -i '' "s|{{PROJECT_DESC}}|$repo_desc|g" "$LATHE_DIR/agent.md" 2>/dev/null || true
 }
 
 # ---------------------------------------------------------------------------
@@ -179,7 +282,7 @@ case "${1:-help}" in
         echo "Usage: lathe <command> [options]"
         echo ""
         echo "Commands:"
-        echo "  init   [--type TYPE]              Initialize project for lathe"
+        echo "  init   [--type TYPE] [--tool NAME] Initialize project for lathe"
         echo "  start  [--cycles N] [--tool NAME] Start improvement loop"
         echo "  stop                              Stop running loop"
         echo "  status [--follow]                 Show current state"
