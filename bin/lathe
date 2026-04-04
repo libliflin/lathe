@@ -1,0 +1,193 @@
+#!/usr/bin/env bash
+# lathe — Autonomous code improvement loop.
+# Point it at any repo and start turning.
+#
+# Usage:
+#   lathe init [--type go|python|node|k8s|generic]
+#   lathe start [--cycles N] [--tool claude|amp]
+#   lathe stop
+#   lathe status
+#   lathe logs [--follow]
+
+set -euo pipefail
+
+# Resolve symlinks to find the real install directory
+_self="${BASH_SOURCE[0]}"
+while [[ -L "$_self" ]]; do
+    _dir="$(cd "$(dirname "$_self")" && pwd)"
+    _self="$(readlink "$_self")"
+    [[ "$_self" != /* ]] && _self="$_dir/$_self"
+done
+LATHE_HOME="$(cd "$(dirname "$_self")/.." && pwd)"
+unset _self _dir
+LATHE_DIR=".lathe"
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+die() { echo "error: $*" >&2; exit 1; }
+
+ensure_initialized() {
+    [[ -d "$LATHE_DIR" ]] || die "Not a lathe project. Run 'lathe init' first."
+    [[ -f "$LATHE_DIR/agent.md" ]] || die "Missing $LATHE_DIR/agent.md. Run 'lathe init' first."
+    [[ -f "$LATHE_DIR/snapshot.sh" ]] || die "Missing $LATHE_DIR/snapshot.sh. Run 'lathe init' first."
+}
+
+# ---------------------------------------------------------------------------
+# init — introspect project and generate .lathe/
+# ---------------------------------------------------------------------------
+
+detect_type() {
+    if [[ -f "go.mod" ]] || ls *.go &>/dev/null; then
+        echo "go"
+    elif [[ -f "Cargo.toml" ]]; then
+        echo "rust"
+    elif [[ -f "package.json" ]]; then
+        echo "node"
+    elif [[ -f "pyproject.toml" ]] || [[ -f "setup.py" ]] || [[ -f "requirements.txt" ]]; then
+        echo "python"
+    elif [[ -d "platform/charts" ]]; then
+        echo "k8s"
+    else
+        echo "generic"
+    fi
+}
+
+cmd_init() {
+    local project_type=""
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --type) project_type="$2"; shift 2 ;;
+            *)      die "Unknown option: $1" ;;
+        esac
+    done
+
+    if [[ -z "$project_type" ]]; then
+        project_type=$(detect_type)
+        echo "  Detected project type: $project_type"
+    fi
+
+    local template_dir="$LATHE_HOME/templates/$project_type"
+    if [[ ! -d "$template_dir" ]]; then
+        echo "  No template for '$project_type', falling back to generic"
+        template_dir="$LATHE_HOME/templates/generic"
+    fi
+
+    [[ -d "$template_dir" ]] || die "Template directory not found: $template_dir"
+
+    if [[ -d "$LATHE_DIR" ]]; then
+        echo "  .lathe/ already exists. Updating skills only (agent.md preserved)."
+        # Refresh skills from template, don't overwrite agent.md or snapshot.sh
+        if [[ -d "$template_dir/skills" ]]; then
+            mkdir -p "$LATHE_DIR/skills"
+            cp "$template_dir/skills/"*.md "$LATHE_DIR/skills/" 2>/dev/null || true
+            echo "  Skills updated from $project_type template."
+        fi
+    else
+        echo ""
+        echo "  ╔═══════════════════════════════════════════╗"
+        echo "  ║  LATHE — initializing project              ║"
+        echo "  ╚═══════════════════════════════════════════╝"
+        echo ""
+
+        mkdir -p "$LATHE_DIR/skills" "$LATHE_DIR/state/logs" "$LATHE_DIR/state/history"
+
+        # Copy template files
+        cp "$template_dir/agent.md" "$LATHE_DIR/agent.md"
+        cp "$template_dir/snapshot.sh" "$LATHE_DIR/snapshot.sh"
+        chmod +x "$LATHE_DIR/snapshot.sh"
+
+        if [[ -d "$template_dir/skills" ]]; then
+            cp "$template_dir/skills/"*.md "$LATHE_DIR/skills/" 2>/dev/null || true
+        fi
+
+        # Customize agent.md with project info
+        local repo_name
+        repo_name=$(basename "$(pwd)")
+        local repo_desc=""
+        if [[ -f "README.md" ]]; then
+            repo_desc=$(head -5 README.md | grep -v '^#' | head -1 | tr -d '\n')
+        fi
+        # Substitute placeholders
+        sed -i '' "s|{{PROJECT_NAME}}|$repo_name|g" "$LATHE_DIR/agent.md" 2>/dev/null || true
+        sed -i '' "s|{{PROJECT_TYPE}}|$project_type|g" "$LATHE_DIR/agent.md" 2>/dev/null || true
+        sed -i '' "s|{{PROJECT_DESC}}|$repo_desc|g" "$LATHE_DIR/agent.md" 2>/dev/null || true
+
+        # Add state/ to .gitignore if not already there
+        if [[ -f .gitignore ]]; then
+            if ! grep -q '\.lathe/state/' .gitignore 2>/dev/null; then
+                echo "" >> .gitignore
+                echo "# Lathe runtime state" >> .gitignore
+                echo ".lathe/state/" >> .gitignore
+            fi
+        else
+            echo "# Lathe runtime state" > .gitignore
+            echo ".lathe/state/" >> .gitignore
+        fi
+
+        echo "  Created: $LATHE_DIR/"
+        echo "  Agent:   $LATHE_DIR/agent.md"
+        echo "  Skills:  $LATHE_DIR/skills/"
+        echo "  Snap:    $LATHE_DIR/snapshot.sh"
+        echo ""
+        echo "  Edit agent.md to customize the agent's identity and goals."
+        echo "  Run 'lathe start' to begin."
+    fi
+}
+
+# ---------------------------------------------------------------------------
+# start/stop/status/logs — delegate to engine
+# ---------------------------------------------------------------------------
+
+cmd_start() {
+    ensure_initialized
+    source "$LATHE_HOME/engine/loop.sh"
+    engine_start "$@"
+}
+
+cmd_stop() {
+    ensure_initialized
+    source "$LATHE_HOME/engine/loop.sh"
+    engine_stop
+}
+
+cmd_status() {
+    ensure_initialized
+    source "$LATHE_HOME/engine/loop.sh"
+    engine_status
+}
+
+cmd_logs() {
+    ensure_initialized
+    source "$LATHE_HOME/engine/loop.sh"
+    engine_logs "$@"
+}
+
+# ---------------------------------------------------------------------------
+# Dispatch
+# ---------------------------------------------------------------------------
+
+case "${1:-help}" in
+    init)    shift; cmd_init "$@" ;;
+    start)   shift; cmd_start "$@" ;;
+    stop)    cmd_stop ;;
+    status)  cmd_status ;;
+    logs)    shift 2>/dev/null || true; cmd_logs "$@" ;;
+    help|--help|-h)
+        echo "Usage: lathe <command> [options]"
+        echo ""
+        echo "Commands:"
+        echo "  init   [--type TYPE]              Initialize project for lathe"
+        echo "  start  [--cycles N] [--tool NAME] Start improvement loop"
+        echo "  stop                              Stop running loop"
+        echo "  status                            Show current state"
+        echo "  logs   [--follow]                 View cycle logs"
+        echo ""
+        echo "Project types: go, python, node, rust, k8s, generic"
+        ;;
+    *)
+        die "Unknown command: $1. Run 'lathe help' for usage."
+        ;;
+esac
