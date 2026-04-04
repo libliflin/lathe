@@ -108,7 +108,7 @@ cmd_init() {
         repo_name=$(basename "$(pwd)")
         local repo_desc=""
         if [[ -f "README.md" ]]; then
-            repo_desc=$(head -5 README.md | grep -v '^#' | head -1 | tr -d '\n')
+            repo_desc=$(head -5 README.md | grep -v '^#' | head -1 | tr -d '\n' || true)
         fi
         # Substitute placeholders
         sed -i '' "s|{{PROJECT_NAME}}|$repo_name|g" "$LATHE_DIR/agent.md" 2>/dev/null || true
