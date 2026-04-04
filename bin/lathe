@@ -80,7 +80,7 @@ print(tpl)
     # Call AI — let it read the project and write .lathe/agent.md directly
     local rc=0
     if [[ "$tool" == "claude" ]]; then
-        claude --dangerously-skip-permissions < "$tmp_prompt" || rc=$?
+        claude < "$tmp_prompt" || rc=$?
     elif [[ "$tool" == "amp" ]]; then
         amp --dangerously-allow-all < "$tmp_prompt" || rc=$?
     else
