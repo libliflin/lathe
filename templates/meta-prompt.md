@@ -1,16 +1,14 @@
-You are helping set up an autonomous code improvement agent for a project. Your job is to analyze the project context below and generate a tailored `agent.md` file — the identity and instructions for the agent that will continuously improve this project.
+You are setting up an autonomous code improvement agent for the project in the current directory. Read the project's files — README, source code, config files, directory structure — and generate a tailored `agent.md`.
 
-## Project Context
-
-{{PROJECT_CONTEXT}}
+Write the agent.md to `.lathe/agent.md`.
 
 ## Priority Stack
 
+Use this priority stack in the generated agent.md:
+
 {{PRIORITY_STACK}}
 
-## Your Task
-
-Generate a complete `agent.md` for this specific project. The output must be raw markdown — no code fences, no preamble, no explanation. Just the agent.md content.
+## What to Generate
 
 The agent.md must include these sections in order:
 
@@ -78,14 +76,3 @@ Brief redirects for common low-value patterns, framed positively:
 - Every change must have a clear stakeholder benefit. If you can't articulate who this helps and how, there's probably a higher-value change available.
 
 Add any project-type-specific rules that apply (e.g., "Never remove tests to make things pass" for projects with test suites).
-
-## CRITICAL OUTPUT INSTRUCTIONS
-
-You are a text generator. Do NOT take any actions, write any files, or use any tools. Your ENTIRE response must be the raw markdown content of agent.md — nothing else.
-
-- Do NOT explain what you're doing
-- Do NOT wrap in code fences
-- Do NOT add preamble or commentary
-- Do NOT summarize
-- Your response starts with `# You are the Lathe.` and ends with the last rule
-- Every character you output goes directly into the agent.md file

@@ -54,57 +54,9 @@ detect_type() {
     fi
 }
 
-collect_project_context() {
-    local project_type="$1"
-    local repo_name
-    repo_name=$(basename "$(pwd)")
-
-    echo "Project: $repo_name"
-    echo "Type: $project_type"
-    echo ""
-
-    # README
-    if [[ -f "README.md" ]]; then
-        echo "=== README.md ==="
-        head -100 README.md
-        echo ""
-    fi
-
-    # Top-level files and directories
-    echo "=== Top-level files ==="
-    ls -1
-    echo ""
-
-    # Dependency / config files
-    for f in go.mod go.sum package.json Cargo.toml pyproject.toml setup.py requirements.txt Makefile Dockerfile docker-compose.yml; do
-        if [[ -f "$f" ]]; then
-            echo "=== $f ==="
-            head -30 "$f"
-            echo ""
-        fi
-    done
-
-    # cmd/ directory (indicates CLI)
-    if [[ -d "cmd" ]]; then
-        echo "=== cmd/ ==="
-        ls -1 cmd/
-        echo ""
-    fi
-
-    # deploy/charts directory (indicates K8s)
-    for d in deploy charts platform/charts; do
-        if [[ -d "$d" ]]; then
-            echo "=== $d/ ==="
-            ls -1 "$d/"
-            echo ""
-        fi
-    done
-}
-
 generate_agent() {
     local tool="$1"
     local project_type="$2"
-    local context="$3"
 
     local priority_stack=""
     if [[ -f "$LATHE_HOME/templates/$project_type/priority-stack.md" ]]; then
@@ -120,17 +72,15 @@ generate_agent() {
     python3 -c "
 import sys
 tpl = open('$LATHE_HOME/templates/meta-prompt.md').read()
-ctx = sys.stdin.read()
-stack = open('/dev/fd/3').read()
-tpl = tpl.replace('{{PROJECT_CONTEXT}}', ctx)
+stack = sys.stdin.read()
 tpl = tpl.replace('{{PRIORITY_STACK}}', stack)
 print(tpl)
-" 3<<< "$priority_stack" <<< "$context" > "$tmp_prompt"
+" <<< "$priority_stack" > "$tmp_prompt"
 
-    # Call AI (|| true to prevent set -e from aborting)
+    # Call AI — let it read the project and write .lathe/agent.md directly
     local rc=0
     if [[ "$tool" == "claude" ]]; then
-        claude --print < "$tmp_prompt" || rc=$?
+        claude --dangerously-skip-permissions < "$tmp_prompt" || rc=$?
     elif [[ "$tool" == "amp" ]]; then
         amp --dangerously-allow-all < "$tmp_prompt" || rc=$?
     else
@@ -191,23 +141,13 @@ cmd_init() {
 
     # Generate agent.md via AI
     echo "  Analyzing project and generating agent ..."
-    local context
-    context=$(collect_project_context "$project_type")
 
-    local agent_file="$LATHE_DIR/agent.md"
     local gen_exit=0
-    generate_agent "$tool" "$project_type" "$context" > "$agent_file.tmp" || gen_exit=$?
+    generate_agent "$tool" "$project_type" || gen_exit=$?
 
-    local tmp_size=0
-    [[ -f "$agent_file.tmp" ]] && tmp_size=$(wc -c < "$agent_file.tmp" | tr -d ' ')
-    echo "  (debug: exit=$gen_exit size=${tmp_size}b)"
-    [[ -f "$agent_file.tmp" ]] && [[ "$tmp_size" -gt 0 ]] && echo "  (debug: first line: $(head -1 "$agent_file.tmp"))"
-
-    if [[ "$gen_exit" -eq 0 ]] && [[ -s "$agent_file.tmp" ]] && grep -q "Lathe" "$agent_file.tmp"; then
-        mv "$agent_file.tmp" "$agent_file"
+    if [[ "$gen_exit" -eq 0 ]] && [[ -s "$LATHE_DIR/agent.md" ]] && grep -q "Lathe" "$LATHE_DIR/agent.md"; then
         echo "  Agent generated via $tool."
     else
-        rm -f "$agent_file.tmp"
         if [[ "$gen_exit" -ne 0 ]]; then
             echo "  WARN: AI generation failed (exit $gen_exit). Falling back to static template."
         else
