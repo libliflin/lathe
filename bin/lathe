@@ -116,7 +116,6 @@ generate_agent() {
     # Build prompt via temp file to avoid bash substitution issues
     local tmp_prompt
     tmp_prompt=$(mktemp)
-    trap "rm -f '$tmp_prompt'" RETURN
 
     python3 -c "
 import sys
@@ -128,17 +127,18 @@ tpl = tpl.replace('{{PRIORITY_STACK}}', stack)
 print(tpl)
 " 3<<< "$priority_stack" <<< "$context" > "$tmp_prompt"
 
-    # Call AI
-    local exit_code=0
+    # Call AI (|| true to prevent set -e from aborting)
+    local rc=0
     if [[ "$tool" == "claude" ]]; then
-        claude --dangerously-skip-permissions --print < "$tmp_prompt" 2>/dev/null || exit_code=$?
+        claude --dangerously-skip-permissions --print < "$tmp_prompt" || rc=$?
     elif [[ "$tool" == "amp" ]]; then
-        amp --dangerously-allow-all < "$tmp_prompt" 2>/dev/null || exit_code=$?
+        amp --dangerously-allow-all < "$tmp_prompt" || rc=$?
     else
+        rm -f "$tmp_prompt"
         return 1
     fi
-
-    return "$exit_code"
+    rm -f "$tmp_prompt"
+    return "$rc"
 }
 
 cmd_init() {
@@ -194,17 +194,25 @@ cmd_init() {
     local context
     context=$(collect_project_context "$project_type")
 
-    local agent_content
-    if agent_content=$(generate_agent "$tool" "$project_type" "$context"); then
-        if [[ -n "$agent_content" ]] && echo "$agent_content" | grep -q "You are the Lathe"; then
-            echo "$agent_content" > "$LATHE_DIR/agent.md"
-            echo "  Agent generated via $tool."
+    local agent_file="$LATHE_DIR/agent.md"
+    local gen_exit=0
+    generate_agent "$tool" "$project_type" "$context" > "$agent_file.tmp" || gen_exit=$?
+
+    local tmp_size=0
+    [[ -f "$agent_file.tmp" ]] && tmp_size=$(wc -c < "$agent_file.tmp" | tr -d ' ')
+    echo "  (debug: exit=$gen_exit size=${tmp_size}b)"
+    [[ -f "$agent_file.tmp" ]] && [[ "$tmp_size" -gt 0 ]] && echo "  (debug: first line: $(head -1 "$agent_file.tmp"))"
+
+    if [[ "$gen_exit" -eq 0 ]] && [[ -s "$agent_file.tmp" ]] && grep -q "Lathe" "$agent_file.tmp"; then
+        mv "$agent_file.tmp" "$agent_file"
+        echo "  Agent generated via $tool."
+    else
+        rm -f "$agent_file.tmp"
+        if [[ "$gen_exit" -ne 0 ]]; then
+            echo "  WARN: AI generation failed (exit $gen_exit). Falling back to static template."
         else
             echo "  WARN: AI output didn't look right. Falling back to static template."
-            _fallback_agent "$template_dir" "$project_type"
         fi
-    else
-        echo "  WARN: AI generation failed. Falling back to static template."
         _fallback_agent "$template_dir" "$project_type"
     fi
 
