@@ -57,12 +57,18 @@ detect_type() {
 generate_agent() {
     local tool="$1"
     local project_type="$2"
+    local interactive="${3:-false}"
 
     local priority_stack=""
     if [[ -f "$LATHE_HOME/templates/$project_type/priority-stack.md" ]]; then
         priority_stack=$(cat "$LATHE_HOME/templates/$project_type/priority-stack.md")
     elif [[ -f "$LATHE_HOME/templates/generic/priority-stack.md" ]]; then
         priority_stack=$(cat "$LATHE_HOME/templates/generic/priority-stack.md")
+    fi
+
+    local interactive_block=""
+    if [[ "$interactive" == "true" ]]; then
+        interactive_block=$(cat "$LATHE_HOME/templates/interactive-preamble.md")
     fi
 
     # Build prompt via temp file to avoid bash substitution issues
@@ -74,13 +80,20 @@ import sys
 tpl = open('$LATHE_HOME/templates/meta-prompt.md').read()
 stack = sys.stdin.read()
 tpl = tpl.replace('{{PRIORITY_STACK}}', stack)
+tpl = tpl.replace('{{INTERACTIVE}}', '''$interactive_block''')
 print(tpl)
 " <<< "$priority_stack" > "$tmp_prompt"
 
     # Call AI — let it read the project and write .lathe/agent.md directly
     local rc=0
     if [[ "$tool" == "claude" ]]; then
-        claude -p "$(cat "$tmp_prompt")" --allowedTools "Read,Write,Edit,Glob,Grep" || rc=$?
+        if [[ "$interactive" == "true" ]]; then
+            # Interactive: open Claude Code conversation, user can participate
+            claude "$(cat "$tmp_prompt")" --allowedTools "Read,Write,Edit,Glob,Grep" || rc=$?
+        else
+            # Autonomous: run silently, exit when done
+            claude -p "$(cat "$tmp_prompt")" --allowedTools "Read,Write,Edit,Glob,Grep" || rc=$?
+        fi
     elif [[ "$tool" == "amp" ]]; then
         amp --dangerously-allow-all < "$tmp_prompt" || rc=$?
     else
@@ -94,12 +107,14 @@ print(tpl)
 cmd_init() {
     local project_type=""
     local tool="claude"
+    local interactive=false
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --type) project_type="$2"; shift 2 ;;
-            --tool) tool="$2"; shift 2 ;;
-            *)      die "Unknown option: $1" ;;
+            --type)        project_type="$2"; shift 2 ;;
+            --tool)        tool="$2"; shift 2 ;;
+            --interactive) interactive=true; shift ;;
+            *)             die "Unknown option: $1" ;;
         esac
     done
 
@@ -131,30 +146,39 @@ cmd_init() {
 
     mkdir -p "$LATHE_DIR/skills" "$LATHE_DIR/state/logs" "$LATHE_DIR/state/history"
 
-    # Copy snapshot and skills from template
+    # Copy snapshot from template
     cp "$template_dir/snapshot.sh" "$LATHE_DIR/snapshot.sh"
     chmod +x "$LATHE_DIR/snapshot.sh"
 
-    if [[ -d "$template_dir/skills" ]]; then
-        cp "$template_dir/skills/"*.md "$LATHE_DIR/skills/" 2>/dev/null || true
-    fi
-
-    # Generate agent.md via AI
+    # Generate agent.md and skills via AI
     echo "  Analyzing project and generating agent ..."
 
     local gen_exit=0
-    generate_agent "$tool" "$project_type" || gen_exit=$?
+    generate_agent "$tool" "$project_type" "$interactive" || gen_exit=$?
 
-    if [[ "$gen_exit" -eq 0 ]] && [[ -s "$LATHE_DIR/agent.md" ]] && grep -q "Lathe" "$LATHE_DIR/agent.md"; then
-        echo "  Agent generated via $tool."
-    else
-        if [[ "$gen_exit" -ne 0 ]]; then
-            echo "  WARN: AI generation failed (exit $gen_exit). Falling back to static template."
-        else
-            echo "  WARN: AI output didn't look right. Falling back to static template."
-        fi
-        _fallback_agent "$template_dir" "$project_type"
+    if [[ "$gen_exit" -ne 0 ]]; then
+        echo ""
+        echo "  ERROR: Agent generation failed (exit $gen_exit)."
+        echo "  The AI could not analyze this project. Check that '$tool' is installed and working."
+        echo "  You can retry with: lathe init --tool $tool"
+        echo ""
+        echo "  If this persists, please report it: https://github.com/libliflin/lathe/issues"
+        $reinit || rm -rf "$LATHE_DIR"
+        exit 1
     fi
+
+    if [[ ! -s "$LATHE_DIR/agent.md" ]] || ! grep -q "Lathe" "$LATHE_DIR/agent.md"; then
+        echo ""
+        echo "  ERROR: Agent generation produced unusable output."
+        echo "  The AI ran but didn't produce a valid agent.md."
+        echo "  You can retry with: lathe init --tool $tool"
+        echo ""
+        echo "  If this persists, please report it: https://github.com/libliflin/lathe/issues"
+        $reinit || rm -rf "$LATHE_DIR"
+        exit 1
+    fi
+
+    echo "  Agent generated via $tool."
 
     # Add state/ to .gitignore if not already there
     if [[ -f .gitignore ]]; then
@@ -176,23 +200,15 @@ cmd_init() {
     echo "  Agent:   $LATHE_DIR/agent.md"
     echo "  Skills:  $LATHE_DIR/skills/"
     echo "  Snap:    $LATHE_DIR/snapshot.sh"
+    if [[ -f "$LATHE_DIR/alignment-summary.md" ]]; then
+        echo ""
+        echo "  Review the alignment summary before starting:"
+        echo "  cat $LATHE_DIR/alignment-summary.md"
+        echo ""
+        echo "  If something looks off, re-run with: lathe init --interactive"
+    fi
     echo ""
     echo "  Run 'lathe start' to begin."
-}
-
-_fallback_agent() {
-    local template_dir="$1"
-    local project_type="$2"
-    local repo_name
-    repo_name=$(basename "$(pwd)")
-    local repo_desc=""
-    if [[ -f "README.md" ]]; then
-        repo_desc=$(head -5 README.md | grep -v '^#' | head -1 | tr -d '\n' || true)
-    fi
-    cp "$template_dir/agent.md" "$LATHE_DIR/agent.md"
-    sed -i '' "s|{{PROJECT_NAME}}|$repo_name|g" "$LATHE_DIR/agent.md" 2>/dev/null || true
-    sed -i '' "s|{{PROJECT_TYPE}}|$project_type|g" "$LATHE_DIR/agent.md" 2>/dev/null || true
-    sed -i '' "s|{{PROJECT_DESC}}|$repo_desc|g" "$LATHE_DIR/agent.md" 2>/dev/null || true
 }
 
 # ---------------------------------------------------------------------------
@@ -237,8 +253,10 @@ case "${1:-help}" in
         echo "Usage: lathe <command> [options]"
         echo ""
         echo "Commands:"
-        echo "  init   [--type TYPE] [--tool NAME] Initialize project for lathe"
-        echo "  start  [--cycles N] [--tool NAME] Start improvement loop"
+        echo "  init   [--type TYPE] [--tool NAME]        Initialize project for lathe"
+        echo "         [--interactive]                    Participate in stakeholder discovery"
+        echo "  start  [--cycles N] [--tool NAME]         Start improvement loop"
+        echo "         [--theme \"...\"]                    Purpose for this session"
         echo "  stop                              Stop running loop"
         echo "  status [--follow]                 Show current state"
         echo "  logs   [--follow]                 View cycle logs"

@@ -86,6 +86,16 @@ run_agent() {
         fi
     done
 
+    # Theme — why the user put this on the lathe today
+    if [[ -f "$LATHE_STATE/theme.txt" ]]; then
+        local theme_text
+        theme_text=$(cat "$LATHE_STATE/theme.txt")
+        prompt+="---"$'\n'
+        prompt+="# Theme"$'\n\n'
+        prompt+="The user started this session with a purpose: **$theme_text**"$'\n\n'
+        prompt+="Use this to guide your pick step. The stakeholder framework in agent.md still applies — the theme tells you where to focus within it, not to override it."$'\n\n'
+    fi
+
     # Permanent decisions
     if [[ -f "$LATHE_STATE/decisions.md" ]]; then
         prompt+="---"$'\n'
@@ -119,7 +129,10 @@ run_agent() {
     if (( cycle > 1 )) && (( cycle % RETRO_INTERVAL == 0 )); then
         prompt+="---"$'\n'
         prompt+="# Retro Mode — Last $RETRO_INTERVAL Cycles"$'\n'
-        prompt+="Review the last $RETRO_INTERVAL cycles for patterns. Are we stuck? Making progress? Repeating the same fix?"$'\n\n'
+        prompt+="Review the last $RETRO_INTERVAL cycles for patterns:"$'\n'
+        prompt+="- Are we stuck? Making progress? Repeating the same fix?"$'\n'
+        prompt+="- Which stakeholder benefited from each cycle? Is any stakeholder being neglected?"$'\n'
+        prompt+="- Are we still aligned with the theme (if set) and the stakeholder priorities in agent.md?"$'\n\n'
         local start_cycle=$((cycle - RETRO_INTERVAL))
         (( start_cycle < 1 )) && start_cycle=1
         for (( c=start_cycle; c<cycle; c++ )); do
@@ -201,14 +214,23 @@ is_running() {
 engine_start() {
     local max_cycles=0
     local tool="claude"
+    local theme=""
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --cycles) max_cycles="$2"; shift 2 ;;
             --tool)   tool="$2"; shift 2 ;;
+            --theme)  theme="$2"; shift 2 ;;
             *)        die "Unknown option: $1" ;;
         esac
     done
+
+    # Persist theme so it survives across the background process boundary
+    if [[ -n "$theme" ]]; then
+        echo "$theme" > "$LATHE_STATE/theme.txt"
+    else
+        rm -f "$LATHE_STATE/theme.txt"
+    fi
 
     if is_running; then
         echo "Already running (PID $(cat "$PID_FILE")). Use 'lathe stop' first."
