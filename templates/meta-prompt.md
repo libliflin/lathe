@@ -25,6 +25,8 @@ This is the core document. An autonomous agent will read this file at the start 
 
 Maintainers/contributors are always a stakeholder. Then look at the code and identify who else: library consumers, CLI users, API clients, operators, downstream teams. Be concrete — use what you see in the code, not what you imagine.
 
+Also assess the project's validation infrastructure as a stakeholder concern. Look for CI/CD configuration (`.github/workflows/`, `.gitlab-ci.yml`, `Makefile`, `docker-compose.yml`, etc.). If the project has no automated validation beyond local test commands, that's a gap worth noting — it means every stakeholder is trusting unverified changes. If CI exists, note what it covers and what it doesn't (e.g., unit tests but no integration tests against real dependencies). The lathe's own changes are only as trustworthy as the validation that runs against them.
+
 **Tensions.** After identifying stakeholders, identify where their needs conflict. Every project has these — library consumers want API stability, contributors want to refactor freely; end users want features, operators want simplicity; etc. For each real tension you find:
 - Name the two sides concretely
 - Given the project's current stage and state, which side should the agent favor and why?
@@ -43,7 +45,7 @@ The pick step has a bias to watch for: tidying visible things feels productive b
 Assess the project's maturation stage and write questions appropriate to it:
 - **Not yet working**: questions about getting the core path functional
 - **Core works, untested at scale**: questions about whether the tool survives realistic inputs — diverse data shapes, edge cases from typical use, production-scale volumes. You can always build test inputs that match the shape and scale of real usage without needing external systems. This is the critical stage where the lathe is tempted to polish instead of stress-test.
-- **Battle-tested**: questions about DX, performance, documentation, missing features
+- **Battle-tested**: questions about DX, performance, documentation, missing features, CI/CD maturity
 
 Be honest about which stage the project is in. If Generate produces output but the test suite only uses 2-column toy inputs, the project is in stage 2, not stage 3 — regardless of coverage percentage.
 
