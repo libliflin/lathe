@@ -257,6 +257,7 @@ case "${1:-help}" in
         echo "         [--interactive]                    Participate in stakeholder discovery"
         echo "  start  [--cycles N] [--tool NAME]         Start improvement loop"
         echo "         [--theme \"...\"]                    Purpose for this session"
+        echo "         [--direct]                         Skip branch/PR, commit to current branch"
         echo "  stop                              Stop running loop"
         echo "  status [--follow]                 Show current state"
         echo "  logs   [--follow]                 View cycle logs"

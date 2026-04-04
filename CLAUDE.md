@@ -27,7 +27,11 @@ With `--interactive`, the user participates in stakeholder discovery — the ini
 
 If AI generation fails, init fails loudly. There are no fallback templates — a generic agent that doesn't understand the project's stakeholders is worse than no agent.
 
-**`lathe start`** — The execution loop. `engine/loop.sh` runs cycles: `snapshot.sh` collects state, prompt is assembled from `agent.md` + skills + theme + snapshot + previous changelog, AI makes one change, validates, commits. Every 5 cycles, a stakeholder-aware retro reviews recent changes for drift.
+**`lathe start`** — The execution loop. By default runs in branch mode: creates a session branch, and the agent manages PRs and CI through `gh` CLI. The engine is dumb plumbing — it creates the branch, waits for CI (blocks up to 2 min), collects snapshots with CI status, calls the agent, and catches mistakes. All smart decisions (merge PR? fix CI? create new PR? wait out an outage?) live in the agent prompt, not in shell.
+
+The cycle: wait for CI → snapshot (including CI results) → prompt assembly → agent implements one change (commits, pushes, manages PRs) → engine safety net (catches uncommitted changes on wrong branch) → archive → next cycle.
+
+`--direct` flag preserves legacy behavior: commit to current branch, no PRs, no CI integration.
 
 **Templates** — Static mechanics only:
 - `templates/meta-prompt.md` — instructions for the init agent (the most important file in the project)
@@ -58,10 +62,11 @@ templates/
 ## Runtime State
 
 ```
+.lathe/state/session.json    — Session state (branch, PR number, mode)
 .lathe/state/theme.txt       — Current session theme (set by --theme, optional)
 .lathe/state/decisions.md    — Permanent decisions the agent shouldn't revisit
 .lathe/state/cycle.json      — Current cycle number and status
-.lathe/state/snapshot.txt    — Latest project snapshot
+.lathe/state/snapshot.txt    — Latest project snapshot (includes CI status)
 .lathe/state/changelog.md    — Latest cycle changelog
 .lathe/state/history/        — Archived cycle snapshots and changelogs
 .lathe/state/logs/           — Per-cycle agent logs and stream log
@@ -74,3 +79,6 @@ templates/
 - The engine uses `--dangerously-skip-permissions --print` for runtime (non-interactive). Init uses `-p` with `--allowedTools` for controlled writes.
 - State lives in `.lathe/state/` (gitignored). Config lives in `.lathe/` root (committed).
 - No fallback templates. Init succeeds or fails — the user should see and fix failures.
+- Smart decisions (PRs, merges, CI fixes) belong in the agent prompt, not shell. The engine is plumbing.
+- `gh` CLI is optional but enables PR/CI workflow. Without it, branch mode still works (agent pushes, no PR management).
+- CI wait timeout is 2 minutes. If CI doesn't finish, the agent sees "timed out" in the snapshot and can address it.

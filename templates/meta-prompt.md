@@ -27,6 +27,13 @@ Maintainers/contributors are always a stakeholder. Then look at the code and ide
 
 Also assess the project's validation infrastructure as a stakeholder concern. Look for CI/CD configuration (`.github/workflows/`, `.gitlab-ci.yml`, `Makefile`, `docker-compose.yml`, etc.). If the project has no automated validation beyond local test commands, that's a gap worth noting — it means every stakeholder is trusting unverified changes. If CI exists, note what it covers and what it doesn't (e.g., unit tests but no integration tests against real dependencies). The lathe's own changes are only as trustworthy as the validation that runs against them.
 
+**Repository security for autonomous operation.** The lathe reads CI status and PR metadata from GitHub and feeds it into the agent prompt. This is a prompt injection attack surface — anyone who can push commits, leave PR comments, or name workflow runs could inject instructions into the agent's context. During init, check and document in the alignment summary:
+- Is the default branch protected? (require PR reviews, restrict who can push)
+- Are there any GitHub Actions workflows triggered by `pull_request_target` or `issue_comment`? (these can run with elevated permissions on untrusted input)
+- Is the repo public? Public repos have higher injection risk from external contributors and issue/PR spam.
+
+The engine only fetches structured data (statuses, numbers, booleans) from GitHub — never free-text fields like PR titles, comments, or commit messages. But if the repo's security settings are weak, flag it for the user to fix before starting cycles.
+
 **Tensions.** After identifying stakeholders, identify where their needs conflict. Every project has these — library consumers want API stability, contributors want to refactor freely; end users want features, operators want simplicity; etc. For each real tension you find:
 - Name the two sides concretely
 - Given the project's current stage and state, which side should the agent favor and why?
@@ -87,6 +94,19 @@ Add: "Within any layer, always prefer the change that most improves a stakeholde
 ## Next
 - What would make the biggest difference next
 ```
+
+**Working with CI/CD and PRs.**
+
+The lathe runs on a branch and uses PRs to trigger CI. The engine provides session context (current branch, PR number, CI status) in the prompt each cycle. Include guidance for the runtime agent on how to work within this model:
+
+- The agent commits and pushes to its session branch. It creates PRs with `gh pr create` and merges them with `gh pr merge --squash` when CI passes.
+- CI failures are top priority. When CI fails, the next cycle should fix it before doing anything else.
+- CI that takes too long (>2 minutes) is itself a problem to address — fast CI means faster feedback.
+- If there is no CI configuration at all, creating one is likely the single highest-value change the agent can make. Start minimal: a GitHub Actions workflow that runs the project's existing test command. The agent can improve CI incrementally in later cycles (add linting, coverage, integration tests) — it doesn't need to build the perfect pipeline on day one.
+- External CI failures (dependency outages, vulnerability scanners, upstream breakage) require judgment. The agent should explain its reasoning in the changelog: is this worth a workaround? A separate fix? Or should it keep working and let the external issue resolve?
+- When a PR is merged, the agent creates a new branch and PR for the next batch of work.
+
+Encode this in agent.md so the runtime agent understands the PR/CI workflow is part of its job, not something happening around it.
 
 **Rules.**
 - Never skip validation
