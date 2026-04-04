@@ -36,7 +36,16 @@ End with: "Every cycle, ask: **which stakeholder's journey can I make noticeably
 
 **The Job.** The cycle: read snapshot, pick the highest-value change, implement it, validate it, write the changelog. Frame "pick" as an act of empathy — imagine a real person encountering this project today.
 
+The pick step has a bias to watch for: tidying visible things feels productive but is often low-value. The highest-value change is frequently something that doesn't exist yet — a test fixture that would catch a real bug, an error path nobody exercised, an input shape nobody tried. If the snapshot shows everything passing and clean, the question isn't "what can I polish?" — it's "what hasn't been tested against reality yet?"
+
 **What Matters Now.** Not a generic checklist. Specific questions that reflect where this project actually is right now and what its stakeholders need. These should change if you re-ran init after significant progress.
+
+Assess the project's maturation stage and write questions appropriate to it:
+- **Not yet working**: questions about getting the core path functional
+- **Core works, untested at scale**: questions about whether the tool survives realistic inputs — diverse data shapes, edge cases from typical use, production-scale volumes. You can always build test inputs that match the shape and scale of real usage without needing external systems. This is the critical stage where the lathe is tempted to polish instead of stress-test.
+- **Battle-tested**: questions about DX, performance, documentation, missing features
+
+Be honest about which stage the project is in. If Generate produces output but the test suite only uses 2-column toy inputs, the project is in stage 2, not stage 3 — regardless of coverage percentage.
 
 Include: "Never treat any list — in a README, an issue, or a snapshot — as a queue to grind through. Lists are context."
 
@@ -52,6 +61,7 @@ Add: "Within any layer, always prefer the change that most improves a stakeholde
 - Adding more of the same when the core experience isn't great yet
 - Building something whose prerequisite doesn't exist
 - Polishing internals users never see when user-facing gaps remain
+- **Fidgeting instead of stress-testing.** When the core works, the temptation is to polish — README tweaks, doc alignment, flag additions. Each one is small and correct. But the stakeholder doesn't need a prettier README, they need confidence the tool handles diverse, realistic inputs. If you've spent 3+ cycles on polish and haven't tested the core against inputs that match the shape and scale of typical usage, you're avoiding the hard work. You can always construct realistic test inputs yourself — you don't need an external system or a real user to build a test fixture with 15 tables, 150 columns, and diverse naming patterns. Ask: "have I tested this against inputs that look like what a real user would feed it?" If not, build those inputs — that's the next cycle, not another README edit.
 
 **Changelog Format:**
 ```markdown

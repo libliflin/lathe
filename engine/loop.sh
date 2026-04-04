@@ -298,7 +298,7 @@ engine_start() {
     echo $! > "$PID_FILE"
     echo "  Started (PID $!). Tool: $tool"
     echo ""
-    echo "  Logs:    tail -f $LATHE_STATE/logs/stream.log"
+    echo "  Logs:    lathe logs --follow"
     echo "  Status:  lathe status"
     echo "  Stop:    lathe stop"
 }
