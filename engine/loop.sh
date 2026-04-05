@@ -200,10 +200,15 @@ auto_merge_if_green() {
     fi
     log "Merged PR #$pr_number"
 
-    # Switch to base, pull, create fresh branch
+    # Clean up old branch, switch to base, pull
+    local old_branch
+    old_branch=$(get_session_field "branch")
     local base_branch
     base_branch=$(get_session_field "base_branch")
     git checkout "$base_branch" 2>/dev/null || true
+    if [[ -n "$old_branch" ]]; then
+        git branch -D "$old_branch" 2>/dev/null || true
+    fi
     git pull origin "$base_branch" 2>/dev/null || true
 
     local ts
