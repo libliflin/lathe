@@ -796,8 +796,11 @@ _print_status() {
         local elapsed
         elapsed=$(ps -p "$pid" -o etime= 2>/dev/null | tr -d ' ' || echo "?")
         echo "  Running — PID $pid, uptime $elapsed"
+    elif [[ ! -f "$SESSION_FILE" ]]; then
+        echo "  No active session. Run 'lathe start' to begin."
+        return 0
     else
-        echo "  Stopped"
+        echo "  Stopped (session state exists — may need 'lathe stop' to clean up)"
     fi
 
     echo ""
@@ -851,6 +854,10 @@ engine_logs() {
     done
 
     if $follow; then
+        if [[ ! -f "$LATHE_SESSION/logs/stream.log" ]]; then
+            echo "  No active session. Start one with 'lathe start'."
+            return 0
+        fi
         tail -f "$LATHE_SESSION/logs/stream.log"
     else
         local latest
@@ -863,7 +870,7 @@ engine_logs() {
             echo "---"
             echo "  Follow:  lathe logs --follow"
         else
-            echo "  No logs yet."
+            echo "  No logs. Start a session with 'lathe start'."
         fi
     fi
 }
