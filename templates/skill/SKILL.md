@@ -27,14 +27,13 @@ If your project has a `.lathe/` directory, lathe has been initialized on it. Her
                           test results, git state). Runs at the start of every cycle.
   alignment-summary.md  — Plain-English summary of alignment decisions for human review.
   decisions.md          — Permanent decisions the agent won't revisit (session-scoped, tracked)
-  history/              — Archived cycle changelogs and snapshots (session-scoped, tracked)
-    cycle-001/
   session/              — Ephemeral engine runtime (gitignored, wiped on stop):
     session.json        — Current session (branch, PR number, mode)
     theme.txt           — Session purpose set by user via --theme
     cycle.json          — Current cycle number
     snapshot.txt        — Latest snapshot output
     changelog.md        — Latest cycle's changelog
+    history/            — Archived cycle changelogs and snapshots (for retro)
     logs/               — Per-cycle agent logs
 ```
 
@@ -51,7 +50,7 @@ If your project has a `.lathe/` directory, lathe has been initialized on it. Her
 
 When asked to evaluate what lathe has done:
 
-1. **Read the changelogs** in `.lathe/history/cycle-NNN/changelog.md` — each one names who benefits and what changed.
+1. **Read the changelogs** in `.lathe/session/history/cycle-NNN/changelog.md` (while running) or check git log for the squash merge commits on main.
 2. **Check git log** for the lathe's commits — are they coherent? Do they build on each other?
 3. **Read agent.md** to understand what lathe was told to optimize for, then judge whether the changes actually serve those stakeholders.
 4. **Look at test results** — is the project in better shape than before?

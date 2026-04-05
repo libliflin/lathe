@@ -90,19 +90,16 @@ There are exactly two categories of state under `.lathe/`:
   rate-limited               — Sentinel for rate limit backoff
   lathe.pid                  — Engine process ID
   logs/                      — Per-cycle agent logs and stream log
-
-.lathe/history/              — Tracked. Committed by the agent during cycles.
-  cycle-001/changelog.md     — Archived per-cycle changelogs
-  cycle-001/snapshot.txt     — Archived per-cycle snapshots
+  history/                   — Archived cycle changelogs and snapshots (for retro)
 
 .lathe/decisions.md          — Tracked. Agent-written permanent decisions.
 ```
 
-History and decisions are "transient-tracked" — they live on the lathe branch, travel to main via the squash merge when CI passes, and are wiped on `lathe stop`. They are not session-ephemeral (they're git-committed during the session) but they are session-scoped (they don't survive a stop).
+History lives inside `session/` (gitignored) — it only exists to feed the retro every 5 cycles. The real audit trail is the squash merge commit on main. Decisions are tracked and travel to main via the agent's commits.
 
 **`lathe init` (re-init)** wipes everything in `.lathe/` except `refs/` and regenerates config. Old history, decisions, and session state are discarded — the new agent shouldn't be constrained by the old one's decisions.
 
-**`lathe stop`** performs full teardown: kills the process tree (recursive, handles claude daemon clients), closes the PR (with `--delete-branch`), discards dirty working tree, checks out the base branch, deletes the local lathe branch, and wipes `session/`, `history/`, and `decisions.md`.
+**`lathe stop`** performs full teardown: kills the process tree (recursive, handles claude daemon clients), closes the PR (with `--delete-branch`), discards dirty working tree, checks out the base branch, deletes the local lathe branch, and wipes `session/` and `decisions.md`.
 
 ## Conventions
 

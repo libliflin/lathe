@@ -4,8 +4,8 @@
 
 # Session state — ephemeral, gitignored, wiped on stop
 LATHE_SESSION="$LATHE_DIR/session"
+LATHE_HISTORY="$LATHE_SESSION/history"
 # Durable state — tracked, committed by agent, wiped on stop
-LATHE_HISTORY="$LATHE_DIR/history"
 LATHE_DECISIONS="$LATHE_DIR/decisions.md"
 
 LATHE_SKILLS="$LATHE_DIR/skills"
@@ -642,7 +642,7 @@ engine_start() {
 
     # Clean slate — wipe any stale session from a previous run or crashed stop
     rm -rf "$LATHE_SESSION"
-    mkdir -p "$LATHE_SESSION/logs" "$LATHE_HISTORY"
+    mkdir -p "$LATHE_SESSION/logs" "$LATHE_SESSION/history"
 
     # Persist theme so it survives across the background process boundary
     if [[ -n "$theme" ]]; then
@@ -768,7 +768,6 @@ teardown_session() {
 
     # Wipe all session and durable state — clean slate
     rm -rf "$LATHE_SESSION"
-    rm -rf "$LATHE_HISTORY"
     rm -f "$LATHE_DECISIONS"
 }
 
