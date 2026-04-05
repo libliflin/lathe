@@ -185,7 +185,14 @@ wait_for_ci() {
                 return 0
                 ;;
             none)
-                log "No CI checks found for PR #$pr_number"
+                # Check WHY there are no checks — merge conflicts prevent CI from running
+                local merge_state
+                merge_state=$(gh pr view "$pr_number" --json mergeStateStatus --jq '.mergeStateStatus' 2>/dev/null || echo "UNKNOWN")
+                if [[ "$merge_state" == "DIRTY" ]]; then
+                    log "No CI checks on PR #$pr_number — PR has merge conflicts (needs rebase)"
+                else
+                    log "No CI checks found for PR #$pr_number (merge state: $merge_state)"
+                fi
                 CI_RESULT="none"
                 return 0
                 ;;
@@ -324,6 +331,13 @@ collect_ci_status() {
         ci_section+='```'$'\n'
         ci_section+="$(gh pr view "$pr_number" --json number,state,mergeable,mergeStateStatus --jq '{number,state,mergeable,mergeStateStatus}' 2>/dev/null || echo "(could not fetch PR state)")"
         ci_section+=$'\n''```'$'\n'
+
+        # Surface merge conflicts prominently so the agent can't miss them
+        local pr_merge_status
+        pr_merge_status=$(gh pr view "$pr_number" --json mergeStateStatus --jq '.mergeStateStatus' 2>/dev/null || true)
+        if [[ "$pr_merge_status" == "DIRTY" ]]; then
+            ci_section+=$'\n'"**WARNING: PR #$pr_number has merge conflicts with the base branch. CI will not run until conflicts are resolved. You must rebase onto the base branch: \`git fetch origin main && git rebase origin/main\`, resolve any conflicts, then force-push.**"$'\n'
+        fi
     elif [[ "$mode" == "branch" ]]; then
         ci_section+="Current branch: $branch (no PR created yet)"$'\n'
     fi
