@@ -203,8 +203,8 @@ wait_for_ci() {
     return 0
 }
 
-# Engine merges the PR when CI passes, pulls, creates fresh branch.
-# This is plumbing — no LLM tokens spent on mechanical bookkeeping.
+# Engine merges the PR when CI passes, returns to base branch.
+# Does NOT create the next branch — that's the cycle loop's job.
 auto_merge_if_green() {
     if [[ "$CI_RESULT" != "pass" ]]; then return 0; fi
 
@@ -236,7 +236,7 @@ auto_merge_if_green() {
     fi
     log "Merged PR #$pr_number"
 
-    # Switch to base branch and pull — session/ is gitignored so checkout is clean
+    # Return to base branch — session/ is gitignored so checkout is clean
     local old_branch
     old_branch=$(get_session_field "branch")
     git checkout "$base_branch" 2>/dev/null || true
@@ -244,6 +244,26 @@ auto_merge_if_green() {
         git branch -D "$old_branch" 2>/dev/null || true
     fi
     git pull origin "$base_branch" 2>/dev/null || true
+
+    # Clear branch/PR from session — we're on base now
+    set_session_field "branch" ""
+    set_session_field "pr_number" ""
+}
+
+# Create a fresh lathe branch for the next cycle of work.
+# Called at the top of the cycle loop when we're on base after a merge.
+create_session_branch() {
+    local base_branch
+    base_branch=$(get_session_field "base_branch")
+    local current
+    current=$(git rev-parse --abbrev-ref HEAD)
+
+    # Only create a branch if we're on base (post-merge or first cycle after restart)
+    if [[ "$current" != "$base_branch" ]]; then return 0; fi
+    # And only if session doesn't already have a branch
+    local existing
+    existing=$(get_session_field "branch")
+    if [[ -n "$existing" ]]; then return 0; fi
 
     local ts
     ts=$(date '+%Y%m%d-%H%M%S')
@@ -259,7 +279,7 @@ auto_merge_if_green() {
     git checkout -b "$branch_name"
     set_session_field "branch" "$branch_name"
     set_session_field "pr_number" ""
-    log "New branch: $branch_name — ready for next change"
+    log "New branch: $branch_name"
 }
 
 # SECURITY MODEL: The snapshot feeds directly into the LLM prompt.
@@ -647,6 +667,9 @@ engine_start() {
             wait_for_rate_limit
             set_cycle "$cycle" "running"
 
+            # If we're on base (post-merge or first cycle), create a work branch
+            create_session_branch
+
             # Phase 1: Snapshot + CI status
             collect_snapshot
             collect_ci_status
@@ -673,21 +696,6 @@ engine_start() {
 
             if (( max_cycles > 0 )) && (( cycles_run >= max_cycles )); then
                 log "Completed $cycles_run cycles."
-                # If last merge left us on an empty fresh branch, clean it up
-                local cur_branch base_branch
-                cur_branch=$(get_session_field "branch")
-                base_branch=$(get_session_field "base_branch")
-                if [[ -n "$cur_branch" && -n "$base_branch" ]]; then
-                    local ahead
-                    ahead=$(git rev-list --count "$base_branch".."$cur_branch" 2>/dev/null || echo "0")
-                    if [[ "$ahead" == "0" ]]; then
-                        log "Empty branch $cur_branch — cleaning up."
-                        git checkout "$base_branch" 2>/dev/null || true
-                        git branch -D "$cur_branch" 2>/dev/null || true
-                        rm -rf "$LATHE_SESSION" "$LATHE_HISTORY"
-                        rm -f "$LATHE_DECISIONS"
-                    fi
-                fi
                 exit 0
             fi
 
