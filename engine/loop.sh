@@ -629,7 +629,7 @@ engine_start() {
         # die because a gh/ls/python3 command returned non-zero. Each phase
         # handles its own errors explicitly.
         set +e
-        trap 'teardown_session; exit 0' SIGTERM EXIT
+        trap 'exit 0' SIGTERM
 
         exec >> "$LATHE_SESSION/logs/stream.log" 2>&1
 
