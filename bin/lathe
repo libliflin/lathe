@@ -144,7 +144,7 @@ cmd_init() {
     fi
     echo ""
 
-    mkdir -p "$LATHE_DIR/skills" "$LATHE_DIR/state/logs" "$LATHE_DIR/state/history"
+    mkdir -p "$LATHE_DIR/skills" "$LATHE_DIR/refs" "$LATHE_DIR/state/logs" "$LATHE_DIR/state/history"
 
     # Copy snapshot from template
     cp "$template_dir/snapshot.sh" "$LATHE_DIR/snapshot.sh"

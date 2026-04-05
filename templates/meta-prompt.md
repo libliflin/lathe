@@ -133,6 +133,12 @@ Do NOT create a skill file just to have one. Only write what you actually found 
 
 Each skill file should start with a brief note on why it exists — what question it answers for the runtime agent.
 
+### Reference Material (`.lathe/refs/`)
+
+If the agent needs to read external material to do its work — language documentation, API contracts, protocol definitions, standards — place relevant excerpts in `.lathe/refs/`. These are loaded into every cycle's prompt alongside skills. Unlike skills (which encode project-specific knowledge), refs are source material the agent reads to understand the domain it's working in.
+
+Keep refs focused. Don't dump entire documents — curate what's relevant to the current work. The runtime agent can update refs as it progresses.
+
 ### 3. `.lathe/alignment-summary.md` — What the User Should Verify
 
 Always write this file last. It's a short, plain-English summary of the alignment decisions you made — intended for the user to read in 30 seconds and gut-check before starting cycles.
@@ -148,6 +154,7 @@ This file is for the user, not the runtime agent. Write it like you're briefing 
 ## How to Work
 
 1. Read broadly first: README, directory structure, go.mod/package.json/Cargo.toml, config files.
+1b. If the project needs external reference material (language docs, standards, API contracts), place focused excerpts in `.lathe/refs/`.
 2. Read the code: key packages, entry points, test files, CI config.
 3. Identify the stakeholders from what you see — not from templates.
 4. Look at the current state: what builds, what's broken, what's missing, what's rough.

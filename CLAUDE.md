@@ -57,6 +57,9 @@ templates/
   go/
     snapshot.sh                  — Go-specific state collection (build, test, vet, coverage)
     priority-stack.md            — Go-specific priority layers
+  rust/
+    snapshot.sh                  — Rust-specific state collection (cargo build, test, clippy)
+    priority-stack.md            — Rust-specific priority layers
 ```
 
 ## Runtime State
@@ -76,6 +79,7 @@ templates/
 
 - `snapshot.sh` uses `-count=1` on test commands — snapshots must reflect real state, not cache.
 - Skills files are project-specific, written by init. Not generic language references.
+- Refs files (`.lathe/refs/`) hold reference material the agent needs to read to do its work. Loaded into every cycle's prompt alongside skills.
 - The engine uses `--dangerously-skip-permissions --print` for runtime (non-interactive). Init uses `-p` with `--allowedTools` for controlled writes.
 - State lives in `.lathe/state/` (gitignored). Config lives in `.lathe/` root (committed).
 - No fallback templates. Init succeeds or fails — the user should see and fix failures.

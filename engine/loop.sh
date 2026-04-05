@@ -380,6 +380,16 @@ run_agent() {
         fi
     done
 
+    # Reference documents (external specs, standards)
+    for ref_file in "$LATHE_DIR/refs"/*.md; do
+        if [[ -f "$ref_file" ]]; then
+            prompt+="---"$'\n'
+            prompt+="# Reference: $(basename "$ref_file" .md)"$'\n\n'
+            prompt+="$(cat "$ref_file")"
+            prompt+=$'\n\n'
+        fi
+    done
+
     # Theme — why the user put this on the lathe today
     if [[ -f "$LATHE_STATE/theme.txt" ]]; then
         local theme_text
@@ -457,7 +467,8 @@ run_agent() {
         prompt+="Review the last $RETRO_INTERVAL cycles for patterns:"$'\n'
         prompt+="- Are we stuck? Making progress? Repeating the same fix?"$'\n'
         prompt+="- Which stakeholder benefited from each cycle? Is any stakeholder being neglected?"$'\n'
-        prompt+="- Are we still aligned with the theme (if set) and the stakeholder priorities in agent.md?"$'\n\n'
+        prompt+="- Are we still aligned with the theme (if set) and the stakeholder priorities in agent.md?"$'\n'
+        prompt+="- **Big bet or little bet?** Is the highest-leverage move right now advancing into new territory or hardening what we have? Pick one direction for the next few cycles."$'\n\n'
         local start_cycle=$((cycle - RETRO_INTERVAL))
         (( start_cycle < 1 )) && start_cycle=1
         for (( c=start_cycle; c<cycle; c++ )); do
