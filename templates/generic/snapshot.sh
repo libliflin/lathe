@@ -17,7 +17,7 @@ git log --oneline -10 2>/dev/null || echo "(no commits)"
 echo ""
 
 echo "## File Structure"
-find . -maxdepth 3 -not -path './.git/*' -not -path './.lathe/state/*' -not -path './node_modules/*' -not -path './vendor/*' | head -80 || true
+find . -maxdepth 3 -not -path './.git/*' -not -path './.lathe/session/*' -not -path './node_modules/*' -not -path './vendor/*' | head -80 || true
 echo ""
 
 echo "## TODOs"

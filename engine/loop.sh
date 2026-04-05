@@ -2,23 +2,46 @@
 # engine/loop.sh — Generic cycle engine.
 # Sourced by bin/lathe. Expects LATHE_DIR=".lathe" and LATHE_HOME set.
 
-LATHE_STATE="$LATHE_DIR/state"
-LATHE_HISTORY="$LATHE_STATE/history"
+# Session state — ephemeral, gitignored, wiped on stop
+LATHE_SESSION="$LATHE_DIR/session"
+# Durable state — tracked, committed by agent, wiped on stop
+LATHE_HISTORY="$LATHE_DIR/history"
+LATHE_DECISIONS="$LATHE_DIR/decisions.md"
+
 LATHE_SKILLS="$LATHE_DIR/skills"
-PID_FILE="$LATHE_STATE/lathe.pid"
-SESSION_FILE="$LATHE_STATE/session.json"
+PID_FILE="$LATHE_SESSION/lathe.pid"
+SESSION_FILE="$LATHE_SESSION/session.json"
 RETRO_INTERVAL=5
 CI_WAIT_TIMEOUT=120  # seconds to wait for CI before treating as timeout
 
 log() { echo "  [lathe] $(date '+%H:%M:%S') $*"; }
 
 # ---------------------------------------------------------------------------
+# Process management — recursive tree kill
+# ---------------------------------------------------------------------------
+
+# Walk the process tree from a root PID and kill everything (leaves first).
+# Claude CLI talks to a daemon via IPC — we can't kill the daemon, but killing
+# the CLI process (and its children) is sufficient. The daemon abandons work
+# when the client disconnects.
+kill_tree() {
+    local sig="${1:-TERM}"
+    local pid="$2"
+    local children
+    children=$(pgrep -P "$pid" 2>/dev/null || true)
+    for child in $children; do
+        kill_tree "$sig" "$child"
+    done
+    kill -"$sig" "$pid" 2>/dev/null || true
+}
+
+# ---------------------------------------------------------------------------
 # State helpers
 # ---------------------------------------------------------------------------
 
 get_cycle() {
-    if [[ -f "$LATHE_STATE/cycle.json" ]]; then
-        python3 -c "import json; print(json.load(open('$LATHE_STATE/cycle.json')).get('cycle', 1))"
+    if [[ -f "$LATHE_SESSION/cycle.json" ]]; then
+        python3 -c "import json; print(json.load(open('$LATHE_SESSION/cycle.json')).get('cycle', 1))"
     else
         echo 1
     fi
@@ -31,7 +54,7 @@ set_cycle() {
 import json
 from datetime import datetime, timezone
 data = {'cycle': $cycle, 'status': '$status', 'updatedAt': datetime.now(timezone.utc).isoformat()}
-json.dump(data, open('$LATHE_STATE/cycle.json', 'w'), indent=2)
+json.dump(data, open('$LATHE_SESSION/cycle.json', 'w'), indent=2)
 "
 }
 
@@ -41,7 +64,7 @@ archive_cycle() {
     cycle_dir=$(printf "%s/cycle-%03d" "$LATHE_HISTORY" "$cycle")
     mkdir -p "$cycle_dir"
     for f in snapshot.txt changelog.md; do
-        [[ -f "$LATHE_STATE/$f" ]] && cp "$LATHE_STATE/$f" "$cycle_dir/"
+        [[ -f "$LATHE_SESSION/$f" ]] && cp "$LATHE_SESSION/$f" "$cycle_dir/"
     done
 }
 
@@ -213,15 +236,10 @@ auto_merge_if_green() {
     fi
     log "Merged PR #$pr_number"
 
-    # Clean up old branch, switch to base, pull
-    # Stash any dirty state (engine's own state files) so checkout doesn't fail
+    # Switch to base branch and pull — session/ is gitignored so checkout is clean
     local old_branch
     old_branch=$(get_session_field "branch")
-    local base_branch
-    base_branch=$(get_session_field "base_branch")
-    git stash --include-untracked 2>/dev/null || true
     git checkout "$base_branch" 2>/dev/null || true
-    git stash drop 2>/dev/null || true
     if [[ -n "$old_branch" ]]; then
         git branch -D "$old_branch" 2>/dev/null || true
     fi
@@ -230,7 +248,7 @@ auto_merge_if_green() {
     local ts
     ts=$(date '+%Y%m%d-%H%M%S')
     local theme=""
-    [[ -f "$LATHE_STATE/theme.txt" ]] && theme=$(cat "$LATHE_STATE/theme.txt")
+    [[ -f "$LATHE_SESSION/theme.txt" ]] && theme=$(cat "$LATHE_SESSION/theme.txt")
     local branch_name="lathe/${ts}"
     if [[ -n "$theme" ]]; then
         local slug
@@ -253,9 +271,9 @@ auto_merge_if_green() {
 # - Init should verify branch protection settings
 collect_ci_status() {
     if ! command -v gh &>/dev/null; then
-        echo "" >> "$LATHE_STATE/snapshot.txt"
-        echo "## CI/CD Status" >> "$LATHE_STATE/snapshot.txt"
-        echo "(gh CLI not installed — no CI visibility)" >> "$LATHE_STATE/snapshot.txt"
+        echo "" >> "$LATHE_SESSION/snapshot.txt"
+        echo "## CI/CD Status" >> "$LATHE_SESSION/snapshot.txt"
+        echo "(gh CLI not installed — no CI visibility)" >> "$LATHE_SESSION/snapshot.txt"
         return
     fi
 
@@ -309,7 +327,7 @@ collect_ci_status() {
     ci_section+="$(gh run list --limit 5 --json databaseId,status,conclusion,event,headBranch,createdAt --jq '.[] | "#\(.databaseId) \(.status)/\(.conclusion // "—") event:\(.event) branch:\(.headBranch) at:\(.createdAt[:19])"' 2>/dev/null || echo "(no workflow runs)")"
     ci_section+=$'\n''```'$'\n'
 
-    echo "$ci_section" >> "$LATHE_STATE/snapshot.txt"
+    echo "$ci_section" >> "$LATHE_SESSION/snapshot.txt"
 }
 
 # ---------------------------------------------------------------------------
@@ -340,9 +358,9 @@ safety_net() {
         git stash pop
     fi
 
-    # Commit whatever the agent left — but never commit engine state files
+    # Commit whatever the agent left — but never commit session state
     git add -A
-    git reset HEAD -- .lathe/state/ 2>/dev/null || true
+    git reset HEAD -- .lathe/session/ 2>/dev/null || true
     git commit -m "lathe: cycle cleanup (agent left uncommitted changes)" || true
 
     if [[ "$mode" == "branch" && -n "$session_branch" ]]; then
@@ -360,7 +378,7 @@ safety_net() {
 
 collect_snapshot() {
     log "Collecting project snapshot ..."
-    local out="$LATHE_STATE/snapshot.txt"
+    local out="$LATHE_SESSION/snapshot.txt"
 
     if [[ -x "$LATHE_DIR/snapshot.sh" ]]; then
         "$LATHE_DIR/snapshot.sh" > "$out" 2>&1
@@ -408,9 +426,9 @@ run_agent() {
     done
 
     # Theme — why the user put this on the lathe today
-    if [[ -f "$LATHE_STATE/theme.txt" ]]; then
+    if [[ -f "$LATHE_SESSION/theme.txt" ]]; then
         local theme_text
-        theme_text=$(cat "$LATHE_STATE/theme.txt")
+        theme_text=$(cat "$LATHE_SESSION/theme.txt")
         prompt+="---"$'\n'
         prompt+="# Theme"$'\n\n'
         prompt+="The user started this session with a purpose: **$theme_text**"$'\n\n'
@@ -418,18 +436,18 @@ run_agent() {
     fi
 
     # Permanent decisions
-    if [[ -f "$LATHE_STATE/decisions.md" ]]; then
+    if [[ -f "$LATHE_DECISIONS" ]]; then
         prompt+="---"$'\n'
         prompt+="# PERMANENT DECISIONS — DO NOT REVISIT"$'\n\n'
-        prompt+="$(cat "$LATHE_STATE/decisions.md")"
+        prompt+="$(cat "$LATHE_DECISIONS")"
         prompt+=$'\n\n'
     fi
 
     # Current snapshot
     prompt+="---"$'\n'
     prompt+="# Current Project Snapshot"$'\n\n'
-    if [[ -f "$LATHE_STATE/snapshot.txt" ]]; then
-        prompt+="$(cat "$LATHE_STATE/snapshot.txt")"
+    if [[ -f "$LATHE_SESSION/snapshot.txt" ]]; then
+        prompt+="$(cat "$LATHE_SESSION/snapshot.txt")"
     else
         prompt+="(no snapshot collected)"
     fi
@@ -507,7 +525,7 @@ run_agent() {
     fi
 
     # Invoke LLM
-    local log_dir="$LATHE_STATE/logs"
+    local log_dir="$LATHE_SESSION/logs"
     mkdir -p "$log_dir"
     local log_file="$log_dir/cycle-$(printf '%03d' "$cycle").log"
 
@@ -527,11 +545,11 @@ run_agent() {
     # Rate limit detection
     if grep -q "You've hit your limit" "$log_file" 2>/dev/null; then
         log "Rate limited. Ending cycle early."
-        echo "RATE_LIMITED" > "$LATHE_STATE/rate-limited"
+        echo "RATE_LIMITED" > "$LATHE_SESSION/rate-limited"
         return 1
     fi
 
-    rm -f "$LATHE_STATE/rate-limited"
+    rm -f "$LATHE_SESSION/rate-limited"
     log "Agent complete (exit $exit_code). Log: $log_file"
     return "$exit_code"
 }
@@ -541,7 +559,7 @@ run_agent() {
 # ---------------------------------------------------------------------------
 
 wait_for_rate_limit() {
-    if [[ ! -f "$LATHE_STATE/rate-limited" ]]; then
+    if [[ ! -f "$LATHE_SESSION/rate-limited" ]]; then
         return 0
     fi
     log "Rate limited from previous cycle. Waiting 5 minutes ..."
@@ -552,7 +570,7 @@ wait_for_rate_limit() {
         waited=$((waited + 30))
         log "Rate limit cooldown: $((300 - waited))s remaining ..."
     done
-    rm -f "$LATHE_STATE/rate-limited"
+    rm -f "$LATHE_SESSION/rate-limited"
     log "Cooldown complete. Resuming."
 }
 
@@ -580,19 +598,19 @@ engine_start() {
         esac
     done
 
-    # Persist theme so it survives across the background process boundary
-    if [[ -n "$theme" ]]; then
-        echo "$theme" > "$LATHE_STATE/theme.txt"
-    else
-        rm -f "$LATHE_STATE/theme.txt"
-    fi
-
     if is_running; then
         echo "Already running (PID $(cat "$PID_FILE")). Use 'lathe stop' first."
         exit 1
     fi
 
-    mkdir -p "$LATHE_STATE" "$LATHE_HISTORY" "$LATHE_STATE/logs"
+    # Clean slate — wipe any stale session from a previous run or crashed stop
+    rm -rf "$LATHE_SESSION"
+    mkdir -p "$LATHE_SESSION/logs" "$LATHE_HISTORY"
+
+    # Persist theme so it survives across the background process boundary
+    if [[ -n "$theme" ]]; then
+        echo "$theme" > "$LATHE_SESSION/theme.txt"
+    fi
 
     # Initialize session (creates branch in branch mode)
     init_session "$mode" "$theme"
@@ -613,7 +631,7 @@ engine_start() {
         set +e
         trap 'exit 0' SIGTERM
 
-        exec >> "$LATHE_STATE/logs/stream.log" 2>&1
+        exec >> "$LATHE_SESSION/logs/stream.log" 2>&1
 
         local cycle
         cycle=$(get_cycle)
@@ -647,10 +665,11 @@ engine_start() {
             run_agent "$cycle" "$tool" || true
 
             # Phase 3: Post-cycle cleanup
+            # Archive first so safety_net commits history along with stragglers
+            archive_cycle "$cycle"
             safety_net
             discover_pr
 
-            archive_cycle "$cycle"
             set_cycle "$cycle" "complete"
             cycle=$((cycle + 1))
             cycles_run=$((cycles_run + 1))
@@ -679,30 +698,69 @@ engine_start() {
 }
 
 engine_stop() {
-    if ! is_running; then
-        echo "Not running."
-        [[ -f "$PID_FILE" ]] && rm -f "$PID_FILE"
-        return 0
+    # ---------------------------------------------------------------------------
+    # 1. Kill the process tree
+    # ---------------------------------------------------------------------------
+    local pid=""
+    if [[ -f "$PID_FILE" ]]; then
+        pid=$(cat "$PID_FILE")
+        if kill -0 "$pid" 2>/dev/null; then
+            log "Stopping process tree (root PID $pid) ..."
+            kill_tree "TERM" "$pid"
+
+            # Wait for tree to die
+            local attempts=0
+            while kill -0 "$pid" 2>/dev/null && (( attempts < 5 )); do
+                sleep 1
+                attempts=$((attempts + 1))
+            done
+
+            # Force kill if still alive
+            if kill -0 "$pid" 2>/dev/null; then
+                log "Force-killing process tree ..."
+                kill_tree "9" "$pid"
+                sleep 1
+            fi
+        fi
+        rm -f "$PID_FILE"
     fi
-    local pid
-    pid=$(cat "$PID_FILE")
 
-    pkill -TERM -P "$pid" 2>/dev/null || true
-    kill -TERM "$pid" 2>/dev/null || true
+    # ---------------------------------------------------------------------------
+    # 2. Git teardown — close PR, discard work, return to base branch
+    # ---------------------------------------------------------------------------
+    local mode branch pr_number base_branch
+    mode=$(get_session_field "mode")
+    branch=$(get_session_field "branch")
+    pr_number=$(get_session_field "pr_number")
+    base_branch=$(get_session_field "base_branch")
 
-    local _
-    for _ in 1 2 3 4 5; do
-        kill -0 "$pid" 2>/dev/null || break
-        sleep 1
-    done
+    if [[ "$mode" == "branch" && -n "$branch" ]]; then
+        # Discard any dirty working tree so checkout succeeds
+        git checkout -- . 2>/dev/null || true
+        git clean -fd 2>/dev/null || true
 
-    if kill -0 "$pid" 2>/dev/null; then
-        pkill -9 -P "$pid" 2>/dev/null || true
-        kill -9 "$pid" 2>/dev/null || true
+        # Switch to base branch
+        if [[ -n "$base_branch" ]]; then
+            git checkout "$base_branch" 2>/dev/null || true
+        fi
+
+        # Close PR (also deletes remote branch via --delete-branch)
+        if [[ -n "$pr_number" ]] && command -v gh &>/dev/null; then
+            gh pr close "$pr_number" --delete-branch 2>/dev/null || true
+        fi
+
+        # Delete local lathe branch
+        git branch -D "$branch" 2>/dev/null || true
     fi
 
-    rm -f "$PID_FILE"
-    echo "Stopped (PID $pid)."
+    # ---------------------------------------------------------------------------
+    # 3. Wipe all session and durable state — clean slate
+    # ---------------------------------------------------------------------------
+    rm -rf "$LATHE_SESSION"
+    rm -rf "$LATHE_HISTORY"
+    rm -f "$LATHE_DECISIONS"
+
+    echo "Stopped."
 }
 
 engine_status() {
@@ -760,22 +818,22 @@ print(f\"  Base: {s.get('base_branch', '?')}\")
 "
     fi
 
-    if [[ -f "$LATHE_STATE/cycle.json" ]]; then
+    if [[ -f "$LATHE_SESSION/cycle.json" ]]; then
         python3 -c "
 import json
-c = json.load(open('$LATHE_STATE/cycle.json'))
+c = json.load(open('$LATHE_SESSION/cycle.json'))
 print(f\"  Cycle: {c.get('cycle', '?')}  Status: {c.get('status', '?')}\")
 print(f\"  Updated: {c.get('updatedAt', '?')[:19]}\")
 "
     fi
 
-    if [[ -f "$LATHE_STATE/rate-limited" ]]; then
+    if [[ -f "$LATHE_SESSION/rate-limited" ]]; then
         echo "  ** RATE LIMITED — waiting for cooldown **"
     fi
 
     echo ""
     local latest
-    latest=$(ls -t "$LATHE_STATE/logs"/cycle-*.log 2>/dev/null | head -1)
+    latest=$(ls -t "$LATHE_SESSION/logs"/cycle-*.log 2>/dev/null | head -1)
     if [[ -n "$latest" ]]; then
         echo "  Latest log: $latest"
         echo "  Last 5 lines:"
@@ -793,10 +851,10 @@ engine_logs() {
     done
 
     if $follow; then
-        tail -f "$LATHE_STATE/logs/stream.log"
+        tail -f "$LATHE_SESSION/logs/stream.log"
     else
         local latest
-        latest=$(ls -t "$LATHE_STATE/logs"/cycle-*.log 2>/dev/null | head -1)
+        latest=$(ls -t "$LATHE_SESSION/logs"/cycle-*.log 2>/dev/null | head -1)
         if [[ -n "$latest" ]]; then
             echo "=== Latest: $(basename "$latest") ==="
             echo ""

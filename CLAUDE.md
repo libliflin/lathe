@@ -64,18 +64,45 @@ templates/
     SKILL.md                     — Global Claude Code skill, installed to ~/.claude/skills/lathe/ on init
 ```
 
-## Runtime State
+## State Model
+
+There are exactly two categories of state under `.lathe/`:
+
+**Config** — written by `lathe init`, survives stop, committed by the user:
 
 ```
-.lathe/state/session.json    — Session state (branch, PR number, mode)
-.lathe/state/theme.txt       — Current session theme (set by --theme, optional)
-.lathe/state/decisions.md    — Permanent decisions the agent shouldn't revisit
-.lathe/state/cycle.json      — Current cycle number and status
-.lathe/state/snapshot.txt    — Latest project snapshot (includes CI status)
-.lathe/state/changelog.md    — Latest cycle changelog
-.lathe/state/history/        — Archived cycle snapshots and changelogs
-.lathe/state/logs/           — Per-cycle agent logs and stream log
+.lathe/agent.md              — Behavioral instructions, stakeholder map, priorities
+.lathe/alignment-summary.md  — Plain-English summary of alignment decisions
+.lathe/snapshot.sh           — Project state collection script
+.lathe/skills/*.md           — Project-specific knowledge
+.lathe/refs/*.md             — User-curated reference material
 ```
+
+**Session** — born on `lathe start`, dies on `lathe stop`, everything wiped:
+
+```
+.lathe/session/              — Gitignored. Ephemeral engine runtime.
+  session.json               — Branch name, PR number, base branch, mode
+  cycle.json                 — Current cycle number and status
+  snapshot.txt               — Latest snapshot output
+  changelog.md               — Latest cycle changelog
+  theme.txt                  — Session theme (from --theme flag)
+  rate-limited               — Sentinel for rate limit backoff
+  lathe.pid                  — Engine process ID
+  logs/                      — Per-cycle agent logs and stream log
+
+.lathe/history/              — Tracked. Committed by the agent during cycles.
+  cycle-001/changelog.md     — Archived per-cycle changelogs
+  cycle-001/snapshot.txt     — Archived per-cycle snapshots
+
+.lathe/decisions.md          — Tracked. Agent-written permanent decisions.
+```
+
+History and decisions are "transient-tracked" — they live on the lathe branch, travel to main via the squash merge when CI passes, and are wiped on `lathe stop`. They are not session-ephemeral (they're git-committed during the session) but they are session-scoped (they don't survive a stop).
+
+**`lathe init` (re-init)** wipes everything in `.lathe/` except `refs/` and regenerates config. Old history, decisions, and session state are discarded — the new agent shouldn't be constrained by the old one's decisions.
+
+**`lathe stop`** performs full teardown: kills the process tree (recursive, handles claude daemon clients), closes the PR (with `--delete-branch`), discards dirty working tree, checks out the base branch, deletes the local lathe branch, and wipes `session/`, `history/`, and `decisions.md`.
 
 ## Conventions
 
@@ -83,8 +110,9 @@ templates/
 - Skills files are project-specific, written by init. Not generic language references.
 - Refs files (`.lathe/refs/`) hold reference material the agent needs to read to do its work. Loaded into every cycle's prompt alongside skills.
 - The engine uses `--dangerously-skip-permissions --print` for runtime (non-interactive). Init uses `-p` with `--allowedTools` for controlled writes.
-- State lives in `.lathe/state/` (gitignored). Config lives in `.lathe/` root (committed).
+- `.lathe/session/` is gitignored entirely — never blocks branch switches, never committed.
 - No fallback templates. Init succeeds or fails — the user should see and fix failures.
 - Smart decisions (PRs, merges, CI fixes) belong in the agent prompt, not shell. The engine is plumbing.
 - `gh` CLI is optional but enables PR/CI workflow. Without it, branch mode still works (agent pushes, no PR management).
 - CI wait timeout is 2 minutes. If CI doesn't finish, the agent sees "timed out" in the snapshot and can address it.
+- The cycle order is: snapshot → CI wait → auto-merge → agent → archive → safety net → discover PR. Archive runs before safety net so history gets committed with stragglers.

@@ -135,7 +135,17 @@ cmd_init() {
     local reinit=false
     if [[ -d "$LATHE_DIR" ]]; then
         reinit=true
-        echo "  Re-initializing (state preserved)."
+        echo "  Re-initializing (preserving refs/)."
+
+        # Wipe everything except refs/ — config gets regenerated,
+        # session/history/decisions are session-scoped and stale.
+        for item in "$LATHE_DIR"/* "$LATHE_DIR"/.*; do
+            local base
+            base=$(basename "$item")
+            [[ "$base" == "." || "$base" == ".." ]] && continue
+            [[ "$base" == "refs" ]] && continue
+            rm -rf "$item"
+        done
     else
         echo ""
         echo "  ╔═══════════════════════════════════════════╗"
@@ -144,7 +154,7 @@ cmd_init() {
     fi
     echo ""
 
-    mkdir -p "$LATHE_DIR/skills" "$LATHE_DIR/refs" "$LATHE_DIR/state/logs" "$LATHE_DIR/state/history"
+    mkdir -p "$LATHE_DIR/skills" "$LATHE_DIR/refs"
 
     # Copy snapshot from template
     cp "$template_dir/snapshot.sh" "$LATHE_DIR/snapshot.sh"
@@ -180,16 +190,19 @@ cmd_init() {
 
     echo "  Agent generated via $tool."
 
-    # Add state/ to .gitignore if not already there
+    # Ensure .lathe/session/ is gitignored (all ephemeral engine state)
+    # Clean up old-style granular entries from previous versions
     if [[ -f .gitignore ]]; then
-        if ! grep -q '\.lathe/state/' .gitignore 2>/dev/null; then
-            echo "" >> .gitignore
-            echo "# Lathe runtime state" >> .gitignore
-            echo ".lathe/state/" >> .gitignore
-        fi
-    else
-        echo "# Lathe runtime state" > .gitignore
-        echo ".lathe/state/" >> .gitignore
+        sed -i '' '/^\.lathe\/state/d' .gitignore
+        sed -i '' '/^# Lathe logs/d' .gitignore
+        # Remove blank lines that may be left behind (collapse runs of empty lines)
+        sed -i '' '/^$/N;/^\n$/d' .gitignore
+    fi
+    if ! grep -qF ".lathe/session/" .gitignore 2>/dev/null; then
+        [[ -f .gitignore ]] || touch .gitignore
+        echo "" >> .gitignore
+        echo "# Lathe session state (ephemeral, engine-managed)" >> .gitignore
+        echo ".lathe/session/" >> .gitignore
     fi
 
     # Install global Claude Code skill (helps any Claude session understand lathe)
