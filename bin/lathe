@@ -192,6 +192,14 @@ cmd_init() {
         echo ".lathe/state/" >> .gitignore
     fi
 
+    # Install global Claude Code skill (helps any Claude session understand lathe)
+    local skill_dir="$HOME/.claude/skills/lathe"
+    if [[ ! -f "$skill_dir/SKILL.md" ]] || ! diff -q "$LATHE_HOME/templates/skill/SKILL.md" "$skill_dir/SKILL.md" &>/dev/null; then
+        mkdir -p "$skill_dir"
+        cp "$LATHE_HOME/templates/skill/SKILL.md" "$skill_dir/SKILL.md"
+        echo "  Skill:   ~/.claude/skills/lathe/ (updated)"
+    fi
+
     if $reinit; then
         echo "  Updated: agent.md, snapshot.sh, skills"
     else

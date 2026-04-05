@@ -60,6 +60,8 @@ templates/
   rust/
     snapshot.sh                  — Rust-specific state collection (cargo build, test, clippy)
     priority-stack.md            — Rust-specific priority layers
+  skill/
+    SKILL.md                     — Global Claude Code skill, installed to ~/.claude/skills/lathe/ on init
 ```
 
 ## Runtime State
