@@ -265,6 +265,9 @@ create_session_branch() {
     existing=$(get_session_field "branch")
     if [[ -n "$existing" ]]; then return 0; fi
 
+    # Pull latest — someone else (or another lathe) may have merged since last cycle
+    git pull origin "$base_branch" 2>/dev/null || true
+
     local ts
     ts=$(date '+%Y%m%d-%H%M%S')
     local theme=""
