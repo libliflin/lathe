@@ -193,9 +193,22 @@ auto_merge_if_green() {
     pr_number=$(get_session_field "pr_number")
     if [[ -z "$pr_number" ]]; then return 0; fi
 
+    # Ensure PR targets the base branch, not another lathe branch
+    local base_branch
+    base_branch=$(get_session_field "base_branch")
+    local pr_base
+    pr_base=$(gh pr view "$pr_number" --json baseRefName --jq '.baseRefName' 2>/dev/null || true)
+    if [[ -n "$pr_base" && "$pr_base" != "$base_branch" ]]; then
+        log "PR #$pr_number targets '$pr_base' instead of '$base_branch' — fixing ..."
+        gh pr edit "$pr_number" --base "$base_branch" 2>/dev/null || true
+    fi
+
     log "CI green on PR #$pr_number — merging ..."
-    if ! gh pr merge "$pr_number" --squash --delete-branch 2>/dev/null; then
-        log "WARN: auto-merge failed on PR #$pr_number — agent will see this in snapshot"
+    local merge_output
+    merge_output=$(gh pr merge "$pr_number" --squash --delete-branch 2>&1)
+    local merge_rc=$?
+    if [[ $merge_rc -ne 0 ]]; then
+        log "WARN: auto-merge failed on PR #$pr_number (exit $merge_rc): $merge_output"
         return 0
     fi
     log "Merged PR #$pr_number"
@@ -436,7 +449,7 @@ run_agent() {
         if [[ -n "$session_pr" ]]; then
             prompt+="There is an open PR: #$session_pr. Push your commits to this branch. The CI status is in the snapshot above."$'\n\n'
         else
-            prompt+="No PR exists yet. After your first commit and push, create one with \`gh pr create\`."$'\n\n'
+            prompt+="No PR exists yet. After your first commit and push, create one with \`gh pr create --base $session_base\`."$'\n\n'
         fi
 
         prompt+="**Your responsibilities this cycle:**"$'\n'
@@ -446,7 +459,7 @@ run_agent() {
         prompt+="- If CI is failing for external reasons (dependency outage, vulnerability scanner, upstream issue): use your judgment. Sometimes a workaround is right. Sometimes you keep working on the current branch. Explain your reasoning in the changelog."$'\n'
         prompt+="- Otherwise: implement your one change, commit, push to \`$session_branch\`."$'\n\n'
         prompt+="The engine handles merging PRs when CI passes and creating fresh branches. You never need to merge PRs or create branches yourself."$'\n'
-        prompt+="After implementing your change: \`git add\`, \`git commit\`, \`git push origin $session_branch\`. If no PR exists yet, create one with \`gh pr create\`."$'\n\n'
+        prompt+="After implementing your change: \`git add\`, \`git commit\`, \`git push origin $session_branch\`. If no PR exists yet, create one with \`gh pr create --base $session_base\`."$'\n\n'
     fi
 
     # Previous cycle changelog
