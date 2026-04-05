@@ -214,14 +214,9 @@ auto_merge_if_green() {
     log "Merged PR #$pr_number"
 
     # Clean up old branch, switch to base, pull
-    # Stash any dirty state (engine's own state files) so checkout doesn't fail
     local old_branch
     old_branch=$(get_session_field "branch")
-    local base_branch
-    base_branch=$(get_session_field "base_branch")
-    git stash --include-untracked 2>/dev/null || true
     git checkout "$base_branch" 2>/dev/null || true
-    git stash drop 2>/dev/null || true
     if [[ -n "$old_branch" ]]; then
         git branch -D "$old_branch" 2>/dev/null || true
     fi
