@@ -133,7 +133,9 @@ discover_pr() {
 # CI polling — block until checks complete or timeout
 # ---------------------------------------------------------------------------
 
+# Returns CI status via the CI_RESULT variable: pass, fail, timeout, none, skip
 wait_for_ci() {
+    CI_RESULT="skip"
     if ! command -v gh &>/dev/null; then return 0; fi
 
     local pr_number
@@ -151,14 +153,17 @@ wait_for_ci() {
         case "$status" in
             pass)
                 log "CI passed on PR #$pr_number"
+                CI_RESULT="pass"
                 return 0
                 ;;
             fail)
                 log "CI failed on PR #$pr_number"
+                CI_RESULT="fail"
                 return 0
                 ;;
             none)
                 log "No CI checks found for PR #$pr_number"
+                CI_RESULT="none"
                 return 0
                 ;;
             pending)
@@ -171,7 +176,51 @@ wait_for_ci() {
     done
 
     log "CI timed out after ${CI_WAIT_TIMEOUT}s on PR #$pr_number — treating as signal"
+    CI_RESULT="timeout"
     return 0
+}
+
+# Engine merges the PR when CI passes, pulls, creates fresh branch.
+# This is plumbing — no LLM tokens spent on mechanical bookkeeping.
+auto_merge_if_green() {
+    if [[ "$CI_RESULT" != "pass" ]]; then return 0; fi
+
+    local mode
+    mode=$(get_session_field "mode")
+    if [[ "$mode" != "branch" ]]; then return 0; fi
+
+    local pr_number
+    pr_number=$(get_session_field "pr_number")
+    if [[ -z "$pr_number" ]]; then return 0; fi
+
+    log "CI green on PR #$pr_number — merging ..."
+    if ! gh pr merge "$pr_number" --squash --delete-branch 2>/dev/null; then
+        log "WARN: auto-merge failed on PR #$pr_number — agent will see this in snapshot"
+        return 0
+    fi
+    log "Merged PR #$pr_number"
+
+    # Switch to base, pull, create fresh branch
+    local base_branch
+    base_branch=$(get_session_field "base_branch")
+    git checkout "$base_branch" 2>/dev/null || true
+    git pull origin "$base_branch" 2>/dev/null || true
+
+    local ts
+    ts=$(date '+%Y%m%d-%H%M%S')
+    local theme=""
+    [[ -f "$LATHE_STATE/theme.txt" ]] && theme=$(cat "$LATHE_STATE/theme.txt")
+    local branch_name="lathe/${ts}"
+    if [[ -n "$theme" ]]; then
+        local slug
+        slug=$(echo "$theme" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g' | sed 's/--*/-/g' | cut -c1-30)
+        branch_name="lathe/${slug}-${ts}"
+    fi
+
+    git checkout -b "$branch_name"
+    set_session_field "branch" "$branch_name"
+    set_session_field "pr_number" ""
+    log "New branch: $branch_name — ready for next change"
 }
 
 # SECURITY MODEL: The snapshot feeds directly into the LLM prompt.
@@ -240,45 +289,6 @@ collect_ci_status() {
     ci_section+=$'\n''```'$'\n'
 
     echo "$ci_section" >> "$LATHE_STATE/snapshot.txt"
-}
-
-# ---------------------------------------------------------------------------
-# Post-cycle: detect if agent merged PR and set up fresh branch
-# ---------------------------------------------------------------------------
-
-reset_branch_if_merged() {
-    local mode
-    mode=$(get_session_field "mode")
-    if [[ "$mode" != "branch" ]]; then return 0; fi
-
-    local session_branch
-    session_branch=$(get_session_field "branch")
-    local base_branch
-    base_branch=$(get_session_field "base_branch")
-    local current_branch
-    current_branch=$(git rev-parse --abbrev-ref HEAD)
-
-    # If the agent merged the PR, it checked out base branch
-    if [[ "$current_branch" == "$base_branch" ]]; then
-        log "Agent merged PR and returned to $base_branch. Setting up fresh branch."
-        git pull origin "$base_branch" 2>/dev/null || true
-
-        local ts
-        ts=$(date '+%Y%m%d-%H%M%S')
-        local theme=""
-        [[ -f "$LATHE_STATE/theme.txt" ]] && theme=$(cat "$LATHE_STATE/theme.txt")
-        local branch_name="lathe/${ts}"
-        if [[ -n "$theme" ]]; then
-            local slug
-            slug=$(echo "$theme" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g' | sed 's/--*/-/g' | cut -c1-30)
-            branch_name="lathe/${slug}-${ts}"
-        fi
-
-        git checkout -b "$branch_name"
-        set_session_field "branch" "$branch_name"
-        set_session_field "pr_number" ""
-        log "New branch: $branch_name"
-    fi
 }
 
 # ---------------------------------------------------------------------------
@@ -414,14 +424,14 @@ run_agent() {
             prompt+="No PR exists yet. After your first commit and push, create one with \`gh pr create\`."$'\n\n'
         fi
 
-        prompt+="**Your responsibilities this cycle — pick exactly ONE:**"$'\n'
-        prompt+="- If CI passed and the PR is ready to merge: merge it with \`gh pr merge --squash --delete-branch\`, then check out \`$session_base\` and \`git pull\`. **That is the entire cycle. Do not start the next change.** The engine will create a new branch and run the next cycle."$'\n'
-        prompt+="- If CI failed: fixing the failure is your top priority. Read the failure, understand it, fix it. Push the fix to this branch."$'\n'
+        prompt+="**Your responsibilities this cycle:**"$'\n'
+        prompt+="- If CI failed on the previous PR: fixing the failure is your top priority. Read the failure, understand it, fix it. Push the fix to this branch."$'\n'
         prompt+="- If CI timed out (took >2 minutes): that's a signal. Consider making CI faster as a priority."$'\n'
         prompt+="- If there is no CI: creating a basic CI workflow (GitHub Actions, etc.) is likely the highest-value first change. Start minimal — just run the project's test command."$'\n'
         prompt+="- If CI is failing for external reasons (dependency outage, vulnerability scanner, upstream issue): use your judgment. Sometimes a workaround is right. Sometimes you keep working on the current branch. Explain your reasoning in the changelog."$'\n'
-        prompt+="- Otherwise (no PR yet, or more work to do on this branch): implement your one change, commit, push to \`$session_branch\`."$'\n\n'
-        prompt+="**Never do two things in one cycle.** Merging a PR is one thing. Implementing a change is one thing. Do not merge and then start the next change — that causes merge conflicts because the engine hasn't caught up yet."$'\n\n'
+        prompt+="- Otherwise: implement your one change, commit, push to \`$session_branch\`."$'\n\n'
+        prompt+="The engine handles merging PRs when CI passes and creating fresh branches. You never need to merge PRs or create branches yourself."$'\n'
+        prompt+="After implementing your change: \`git add\`, \`git commit\`, \`git push origin $session_branch\`. If no PR exists yet, create one with \`gh pr create\`."$'\n\n'
     fi
 
     # Previous cycle changelog
@@ -589,17 +599,21 @@ engine_start() {
             # Phase 1: Snapshot
             collect_snapshot
 
-            # Phase 1.5: Wait for CI (blocks up to CI_WAIT_TIMEOUT)
+            # Phase 1.5: Wait for CI, auto-merge if green
             wait_for_ci
+            auto_merge_if_green
 
-            # Phase 1.6: Append CI status to snapshot
+            # Phase 1.6: Re-snapshot after potential merge (fresh branch state)
+            # and append CI status
+            if [[ "$CI_RESULT" == "pass" ]]; then
+                collect_snapshot
+            fi
             collect_ci_status
 
-            # Phase 2: Agent
+            # Phase 2: Agent — always gets a clean slate after merge
             run_agent "$cycle" "$tool" || true
 
             # Phase 3: Post-cycle cleanup
-            reset_branch_if_merged
             safety_net
             discover_pr
 
