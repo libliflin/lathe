@@ -12,7 +12,7 @@ LATHE_SKILLS="$LATHE_DIR/skills"
 PID_FILE="$LATHE_SESSION/lathe.pid"
 SESSION_FILE="$LATHE_SESSION/session.json"
 RETRO_INTERVAL=5
-CI_WAIT_TIMEOUT=120  # seconds to wait for CI before treating as timeout
+CI_WAIT_TIMEOUT=300  # seconds to wait for CI (5 min — container pulls alone can take 1-2 min)
 
 log() { echo "  [lathe] $(date '+%H:%M:%S') $*"; }
 

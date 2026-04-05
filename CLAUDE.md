@@ -114,5 +114,5 @@ History and decisions are "transient-tracked" — they live on the lathe branch,
 - No fallback templates. Init succeeds or fails — the user should see and fix failures.
 - Smart decisions (PRs, merges, CI fixes) belong in the agent prompt, not shell. The engine is plumbing.
 - `gh` CLI is optional but enables PR/CI workflow. Without it, branch mode still works (agent pushes, no PR management).
-- CI wait timeout is 2 minutes. If CI doesn't finish, the agent sees "timed out" in the snapshot and can address it.
+- CI wait timeout is 5 minutes. Container pulls alone can take 1-2 min. If CI doesn't finish, the agent sees "timed out" in the snapshot and can address it.
 - The cycle order is: snapshot → agent → archive → safety net → discover PR → CI wait → auto-merge. Each cycle is self-contained: do work, then land it. Teardown only closes work that didn't pass CI.
