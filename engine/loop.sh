@@ -647,21 +647,11 @@ engine_start() {
             wait_for_rate_limit
             set_cycle "$cycle" "running"
 
-            # Phase 1: Snapshot
+            # Phase 1: Snapshot + CI status
             collect_snapshot
-
-            # Phase 1.5: Wait for CI, auto-merge if green
-            wait_for_ci
-            auto_merge_if_green
-
-            # Phase 1.6: Re-snapshot after potential merge (fresh branch state)
-            # and append CI status
-            if [[ "$CI_RESULT" == "pass" ]]; then
-                collect_snapshot
-            fi
             collect_ci_status
 
-            # Phase 2: Agent — always gets a clean slate after merge
+            # Phase 2: Agent implements one change
             run_agent "$cycle" "$tool" || true
 
             # Phase 3: Post-cycle cleanup
@@ -669,6 +659,13 @@ engine_start() {
             archive_cycle "$cycle"
             safety_net
             discover_pr
+
+            # Phase 4: Wait for CI, merge if green
+            # This makes each cycle self-contained: do work, then land it.
+            # When the loop exits, the last cycle's work is already merged
+            # (if CI passed) — teardown only closes work that didn't pass.
+            wait_for_ci
+            auto_merge_if_green
 
             set_cycle "$cycle" "complete"
             cycle=$((cycle + 1))

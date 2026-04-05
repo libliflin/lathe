@@ -40,12 +40,12 @@ If your project has a `.lathe/` directory, lathe has been initialized on it. Her
 
 ## How a Cycle Works
 
-1. Engine waits for CI on the previous PR, auto-merges if green
-2. Engine runs snapshot.sh to collect project state
-3. Engine assembles prompt: agent.md + skills + refs + theme + decisions + snapshot + session context + previous changelog + retro (every 5 cycles)
-4. Agent picks the single highest-value change and implements it
-5. Agent commits, pushes, creates PR if needed
-6. Engine archives the cycle, moves to the next one
+1. Engine runs snapshot.sh to collect project state and CI status
+2. Engine assembles prompt: agent.md + skills + refs + theme + decisions + snapshot + session context + previous changelog + retro (every 5 cycles)
+3. Agent picks the single highest-value change and implements it
+4. Agent commits, pushes, creates PR if needed
+5. Engine archives the cycle (changelog + snapshot to history/)
+6. Engine waits for CI on the PR, auto-merges if green, creates fresh branch for next cycle
 
 ## How to Review Lathe's Work
 
