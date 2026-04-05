@@ -629,7 +629,7 @@ engine_start() {
         # die because a gh/ls/python3 command returned non-zero. Each phase
         # handles its own errors explicitly.
         set +e
-        trap 'exit 0' SIGTERM
+        trap 'teardown_session; exit 0' SIGTERM EXIT
 
         exec >> "$LATHE_SESSION/logs/stream.log" 2>&1
 
@@ -697,6 +697,44 @@ engine_start() {
     echo "  Stop:    lathe stop"
 }
 
+# ---------------------------------------------------------------------------
+# Session teardown — close PR, discard work, return to base, wipe state.
+# Called from engine_stop (after killing processes) and from the subshell's
+# exit trap (when --cycles limit is reached or loop ends naturally).
+# ---------------------------------------------------------------------------
+
+teardown_session() {
+    local mode branch pr_number base_branch
+    mode=$(get_session_field "mode")
+    branch=$(get_session_field "branch")
+    pr_number=$(get_session_field "pr_number")
+    base_branch=$(get_session_field "base_branch")
+
+    if [[ "$mode" == "branch" && -n "$branch" ]]; then
+        # Discard any dirty working tree so checkout succeeds
+        git checkout -- . 2>/dev/null || true
+        git clean -fd 2>/dev/null || true
+
+        # Switch to base branch
+        if [[ -n "$base_branch" ]]; then
+            git checkout "$base_branch" 2>/dev/null || true
+        fi
+
+        # Close PR (also deletes remote branch via --delete-branch)
+        if [[ -n "$pr_number" ]] && command -v gh &>/dev/null; then
+            gh pr close "$pr_number" --delete-branch 2>/dev/null || true
+        fi
+
+        # Delete local lathe branch
+        git branch -D "$branch" 2>/dev/null || true
+    fi
+
+    # Wipe all session and durable state — clean slate
+    rm -rf "$LATHE_SESSION"
+    rm -rf "$LATHE_HISTORY"
+    rm -f "$LATHE_DECISIONS"
+}
+
 engine_stop() {
     # ---------------------------------------------------------------------------
     # 1. Kill the process tree
@@ -726,39 +764,9 @@ engine_stop() {
     fi
 
     # ---------------------------------------------------------------------------
-    # 2. Git teardown — close PR, discard work, return to base branch
+    # 2. Git + state teardown
     # ---------------------------------------------------------------------------
-    local mode branch pr_number base_branch
-    mode=$(get_session_field "mode")
-    branch=$(get_session_field "branch")
-    pr_number=$(get_session_field "pr_number")
-    base_branch=$(get_session_field "base_branch")
-
-    if [[ "$mode" == "branch" && -n "$branch" ]]; then
-        # Discard any dirty working tree so checkout succeeds
-        git checkout -- . 2>/dev/null || true
-        git clean -fd 2>/dev/null || true
-
-        # Switch to base branch
-        if [[ -n "$base_branch" ]]; then
-            git checkout "$base_branch" 2>/dev/null || true
-        fi
-
-        # Close PR (also deletes remote branch via --delete-branch)
-        if [[ -n "$pr_number" ]] && command -v gh &>/dev/null; then
-            gh pr close "$pr_number" --delete-branch 2>/dev/null || true
-        fi
-
-        # Delete local lathe branch
-        git branch -D "$branch" 2>/dev/null || true
-    fi
-
-    # ---------------------------------------------------------------------------
-    # 3. Wipe all session and durable state — clean slate
-    # ---------------------------------------------------------------------------
-    rm -rf "$LATHE_SESSION"
-    rm -rf "$LATHE_HISTORY"
-    rm -f "$LATHE_DECISIONS"
+    teardown_session
 
     echo "Stopped."
 }
