@@ -243,6 +243,45 @@ collect_ci_status() {
 }
 
 # ---------------------------------------------------------------------------
+# Post-cycle: detect if agent merged PR and set up fresh branch
+# ---------------------------------------------------------------------------
+
+reset_branch_if_merged() {
+    local mode
+    mode=$(get_session_field "mode")
+    if [[ "$mode" != "branch" ]]; then return 0; fi
+
+    local session_branch
+    session_branch=$(get_session_field "branch")
+    local base_branch
+    base_branch=$(get_session_field "base_branch")
+    local current_branch
+    current_branch=$(git rev-parse --abbrev-ref HEAD)
+
+    # If the agent merged the PR, it checked out base branch
+    if [[ "$current_branch" == "$base_branch" ]]; then
+        log "Agent merged PR and returned to $base_branch. Setting up fresh branch."
+        git pull origin "$base_branch" 2>/dev/null || true
+
+        local ts
+        ts=$(date '+%Y%m%d-%H%M%S')
+        local theme=""
+        [[ -f "$LATHE_STATE/theme.txt" ]] && theme=$(cat "$LATHE_STATE/theme.txt")
+        local branch_name="lathe/${ts}"
+        if [[ -n "$theme" ]]; then
+            local slug
+            slug=$(echo "$theme" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g' | sed 's/--*/-/g' | cut -c1-30)
+            branch_name="lathe/${slug}-${ts}"
+        fi
+
+        git checkout -b "$branch_name"
+        set_session_field "branch" "$branch_name"
+        set_session_field "pr_number" ""
+        log "New branch: $branch_name"
+    fi
+}
+
+# ---------------------------------------------------------------------------
 # Safety net — catch uncommitted changes the agent left behind
 # ---------------------------------------------------------------------------
 
@@ -375,15 +414,14 @@ run_agent() {
             prompt+="No PR exists yet. After your first commit and push, create one with \`gh pr create\`."$'\n\n'
         fi
 
-        prompt+="**Your responsibilities this cycle:**"$'\n'
-        prompt+="- If CI failed: fixing the failure is your top priority. Read the failure, understand it, fix it."$'\n'
-        prompt+="- If CI passed and the PR is ready: merge it with \`gh pr merge --squash\` and create a new branch + PR for the next batch of work."$'\n'
-        prompt+="- If CI passed but you have more work on this theme: keep pushing to the current branch."$'\n'
-        prompt+="- If there is no CI: creating a basic CI workflow (GitHub Actions, etc.) is likely the highest-value first change. Start minimal — just run the project's test command."$'\n'
+        prompt+="**Your responsibilities this cycle — pick exactly ONE:**"$'\n'
+        prompt+="- If CI passed and the PR is ready to merge: merge it with \`gh pr merge --squash --delete-branch\`, then check out \`$session_base\` and \`git pull\`. **That is the entire cycle. Do not start the next change.** The engine will create a new branch and run the next cycle."$'\n'
+        prompt+="- If CI failed: fixing the failure is your top priority. Read the failure, understand it, fix it. Push the fix to this branch."$'\n'
         prompt+="- If CI timed out (took >2 minutes): that's a signal. Consider making CI faster as a priority."$'\n'
-        prompt+="- If CI is failing for external reasons (dependency outage, vulnerability scanner, upstream issue): use your judgment. Sometimes a workaround PR is right. Sometimes you wait it out and keep working on the current branch. Sometimes you need a separate fix PR. Explain your reasoning in the changelog."$'\n\n'
-        prompt+="After implementing your change: \`git add\`, \`git commit\`, \`git push origin $session_branch\`."$'\n'
-        prompt+="If you created a new branch (after merging a PR), update \`.lathe/state/session.json\` with the new branch name and clear the pr_number."$'\n\n'
+        prompt+="- If there is no CI: creating a basic CI workflow (GitHub Actions, etc.) is likely the highest-value first change. Start minimal — just run the project's test command."$'\n'
+        prompt+="- If CI is failing for external reasons (dependency outage, vulnerability scanner, upstream issue): use your judgment. Sometimes a workaround is right. Sometimes you keep working on the current branch. Explain your reasoning in the changelog."$'\n'
+        prompt+="- Otherwise (no PR yet, or more work to do on this branch): implement your one change, commit, push to \`$session_branch\`."$'\n\n'
+        prompt+="**Never do two things in one cycle.** Merging a PR is one thing. Implementing a change is one thing. Do not merge and then start the next change — that causes merge conflicts because the engine hasn't caught up yet."$'\n\n'
     fi
 
     # Previous cycle changelog
@@ -560,7 +598,8 @@ engine_start() {
             # Phase 2: Agent
             run_agent "$cycle" "$tool" || true
 
-            # Phase 3: Safety net + PR discovery
+            # Phase 3: Post-cycle cleanup
+            reset_branch_if_merged
             safety_net
             discover_pr
 

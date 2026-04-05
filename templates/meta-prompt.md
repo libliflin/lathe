@@ -99,12 +99,13 @@ Add: "Within any layer, always prefer the change that most improves a stakeholde
 
 The lathe runs on a branch and uses PRs to trigger CI. The engine provides session context (current branch, PR number, CI status) in the prompt each cycle. Include guidance for the runtime agent on how to work within this model:
 
-- The agent commits and pushes to its session branch. It creates PRs with `gh pr create` and merges them with `gh pr merge --squash` when CI passes.
+- Each cycle does exactly one thing. Merging a PR is one thing. Implementing a change is one thing. Never merge and then start the next change in the same cycle — the engine needs control back to set up a fresh branch.
+- The agent commits and pushes to its session branch. It creates PRs with `gh pr create` and merges them with `gh pr merge --squash --delete-branch` when CI passes.
+- After merging, check out the base branch and pull. Stop. The engine handles creating the next branch.
 - CI failures are top priority. When CI fails, the next cycle should fix it before doing anything else.
 - CI that takes too long (>2 minutes) is itself a problem to address — fast CI means faster feedback.
 - If there is no CI configuration at all, creating one is likely the single highest-value change the agent can make. Start minimal: a GitHub Actions workflow that runs the project's existing test command. The agent can improve CI incrementally in later cycles (add linting, coverage, integration tests) — it doesn't need to build the perfect pipeline on day one.
 - External CI failures (dependency outages, vulnerability scanners, upstream breakage) require judgment. The agent should explain its reasoning in the changelog: is this worth a workaround? A separate fix? Or should it keep working and let the external issue resolve?
-- When a PR is merged, the agent creates a new branch and PR for the next batch of work.
 
 Encode this in agent.md so the runtime agent understands the PR/CI workflow is part of its job, not something happening around it.
 
