@@ -672,7 +672,22 @@ engine_start() {
             cycles_run=$((cycles_run + 1))
 
             if (( max_cycles > 0 )) && (( cycles_run >= max_cycles )); then
-                log "Completed $cycles_run cycles. Stopping."
+                log "Completed $cycles_run cycles."
+                # If last merge left us on an empty fresh branch, clean it up
+                local cur_branch base_branch
+                cur_branch=$(get_session_field "branch")
+                base_branch=$(get_session_field "base_branch")
+                if [[ -n "$cur_branch" && -n "$base_branch" ]]; then
+                    local ahead
+                    ahead=$(git rev-list --count "$base_branch".."$cur_branch" 2>/dev/null || echo "0")
+                    if [[ "$ahead" == "0" ]]; then
+                        log "Empty branch $cur_branch — cleaning up."
+                        git checkout "$base_branch" 2>/dev/null || true
+                        git branch -D "$cur_branch" 2>/dev/null || true
+                        rm -rf "$LATHE_SESSION" "$LATHE_HISTORY"
+                        rm -f "$LATHE_DECISIONS"
+                    fi
+                fi
                 exit 0
             fi
 
