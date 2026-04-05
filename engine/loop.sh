@@ -526,6 +526,10 @@ engine_start() {
     echo ""
 
     (
+        # Disable set -e inside the cycle loop — the engine must not silently
+        # die because a gh/ls/python3 command returned non-zero. Each phase
+        # handles its own errors explicitly.
+        set +e
         trap 'exit 0' SIGTERM
 
         exec >> "$LATHE_STATE/logs/stream.log" 2>&1
