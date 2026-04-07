@@ -22,6 +22,7 @@ This is the core document. An autonomous agent will read this file at the start 
 - What does success look like for them?
 - What would make them trust this project? What would make them leave?
 - Where is the project currently failing them?
+- **What is the load-bearing claim** — the specific promise this project is making them that, if it broke, would make them leave? You will encode these in `.lathe/claims.md` as part of the falsification suite.
 
 Maintainers/contributors are always a stakeholder. Then look at the code and identify who else: library consumers, CLI users, API clients, operators, downstream teams. Be concrete — use what you see in the code, not what you imagine.
 
@@ -95,6 +96,15 @@ Add: "Within any layer, always prefer the change that most improves a stakeholde
 - What would make the biggest difference next
 ```
 
+**Working with the Falsification Suite.**
+
+Each cycle, the engine runs `.lathe/falsify.sh` and includes its result in the snapshot under `## Falsification`. This suite encodes the load-bearing claims this project makes to its stakeholders — promises that, if broken, would make someone leave.
+
+- A failing claim is top priority, like a failing CI check. Fix it before any new work.
+- When a new feature creates a new promise, extend `claims.md` and add a case to `falsify.sh`. The suite must grow with the project, not stay frozen at init.
+- Periodically the engine will inject instructions for a "red-team cycle" — that cycle's job is to falsify, not to build. Follow them.
+- Adversarial means *trying to break the promise*, not *checking the happy path*. A passing falsification suite that only exercises easy inputs is worse than no suite, because it provides false confidence.
+
 **Working with CI/CD and PRs.**
 
 The lathe runs on a branch and uses PRs to trigger CI. The engine provides session context (current branch, PR number, CI status) in the prompt each cycle. Include guidance for the runtime agent on how to work within this model:
@@ -115,6 +125,8 @@ Encode this in agent.md so the runtime agent understands the PR/CI workflow is p
 - Respect existing patterns
 - If stuck 3+ cycles on the same issue, change approach entirely
 - Every change must have a clear stakeholder benefit
+- Falsification failures are top priority, like CI failures
+- Never weaken `falsify.sh` to make it pass — fix the underlying claim or document the limitation in `claims.md`
 
 Add project-specific rules based on what you observe (e.g., if there are tests: "Never remove tests to make things pass").
 
@@ -139,15 +151,41 @@ If the agent needs to read external material to do its work — language documen
 
 Keep refs focused. Don't dump entire documents — curate what's relevant to the current work. The runtime agent can update refs as it progresses.
 
-### 3. `.lathe/alignment-summary.md` — What the User Should Verify
+### 3. `.lathe/claims.md` and `.lathe/falsify.sh` — The Falsification Suite
+
+This is the structural defense against Goodhart's Law and metric-gaming. The runtime agent's optimization target is the snapshot — so the snapshot has to encode what actually matters, not just what is easy to measure. Telling the agent "be adversarial" in a prompt loses to the gradient. Putting a falsification result in the snapshot every cycle does not.
+
+**`.lathe/claims.md`** is a registry of the load-bearing promises this project makes to its stakeholders. For each stakeholder you identified, list the specific claim(s) that, if violated, would cause them to leave. Be concrete:
+
+- Bad: "the CLI is reliable"
+- Good: "`lathe stop` always leaves the working tree on the base branch with no uncommitted changes, regardless of what the agent did during the cycle"
+
+Tag each claim with the stakeholder it serves. Aim for 3–8 claims at init time — the most load-bearing ones, not every promise the project makes. The runtime agent will extend this list as the project grows.
+
+**`.lathe/falsify.sh`** is an executable bash script that exercises those claims with adversarial inputs and exits non-zero if any claim is violated. Rules:
+
+- Must be executable (`chmod +x`). The engine runs it every cycle as part of snapshot collection.
+- Exit 0 if all claims hold; non-zero if any fail. Print which claim failed and why.
+- Must be fast (runs every cycle). Seconds, not minutes.
+- Must not require network or external services. Construct adversarial fixtures locally — that is the whole point.
+- Use the project's own toolchain. If the project is Go, write Go test fixtures and shell out to `go test`. If it is a CLI, exercise the CLI with constructed inputs and check stdout/exit codes.
+- Each case targets one named claim from `claims.md`. The output should make it obvious which claim broke.
+- Adversarial means *trying to break the promise*, not *checking the happy path*. If a claim says "handles 150-column inputs," the case feeds 150 columns with awkward names, mixed encodings, and edge whitespace — not three columns named foo/bar/baz.
+
+The runtime agent treats falsification failures the same way it treats CI failures: top priority, fix before any new work. It can also extend both files as the project evolves — when a new feature creates a new promise, the agent adds it to the registry and writes a falsification case.
+
+If the project is too immature for any load-bearing claims to exist yet (not even "the build succeeds"), write a `claims.md` that says so honestly and a `falsify.sh` that exits 0 with a comment explaining why. **Do not invent claims to fill the file.** A fake claim is worse than no claim — it provides false confidence and trains the agent to game the metric.
+
+### 4. `.lathe/alignment-summary.md` — What the User Should Verify
 
 Always write this file last. It's a short, plain-English summary of the alignment decisions you made — intended for the user to read in 30 seconds and gut-check before starting cycles.
 
 Include:
 - **Who this serves**: one line per stakeholder, plain language
 - **Key tensions**: where needs conflict and which side you favored
+- **Load-bearing claims**: the promises encoded in `.lathe/claims.md`, one line each — these are what the falsification suite will defend every cycle
 - **Current focus**: what the agent will prioritize given the project's current state
-- **What could be wrong**: anything you're uncertain about — stakeholders you might have missed, conventions you couldn't verify, assumptions you made
+- **What could be wrong**: anything you're uncertain about — stakeholders you might have missed, conventions you couldn't verify, assumptions you made, claims you suspect are weak
 
 This file is for the user, not the runtime agent. Write it like you're briefing a person, not instructing a machine.
 
@@ -156,8 +194,10 @@ This file is for the user, not the runtime agent. Write it like you're briefing 
 1. Read broadly first: README, directory structure, go.mod/package.json/Cargo.toml, config files.
 1b. If the project needs external reference material (language docs, standards, API contracts), place focused excerpts in `.lathe/refs/`.
 2. Read the code: key packages, entry points, test files, CI config.
-3. Identify the stakeholders from what you see — not from templates.
+3. Identify the stakeholders from what you see — not from templates. For each one, also identify the load-bearing claim they are trusting.
 4. Look at the current state: what builds, what's broken, what's missing, what's rough.
 5. Write agent.md and skills that encode everything the runtime agent needs.
+6. Write `claims.md` and `falsify.sh`. Verify `falsify.sh` is executable and runs in seconds. Run it once and confirm it exits 0 (or, if a claim is currently broken, that it exits non-zero with a clear message — that is also a valid starting state, and the runtime agent will prioritize fixing it).
+7. Write `alignment-summary.md` last.
 
 The quality of what you write here determines the quality of every cycle that follows. Take your time. Read thoroughly. Be specific.

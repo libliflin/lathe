@@ -12,6 +12,7 @@ LATHE_SKILLS="$LATHE_DIR/skills"
 PID_FILE="$LATHE_SESSION/lathe.pid"
 SESSION_FILE="$LATHE_SESSION/session.json"
 RETRO_INTERVAL=5
+RED_TEAM_INTERVAL=4
 CI_WAIT_TIMEOUT=300  # seconds to wait for CI (5 min — container pulls alone can take 1-2 min)
 
 log() { echo "  [lathe] $(date '+%H:%M:%S') $*"; }
@@ -250,6 +251,9 @@ auto_merge_if_green() {
     if [[ -n "$old_branch" ]]; then
         git branch -D "$old_branch" 2>/dev/null || true
     fi
+
+    # Give GitHub time to propagate the merge before fetching
+    sleep 10
     git pull origin "$base_branch" 2>/dev/null || true
 
     # Clear branch/PR from session — we're on base now
@@ -365,6 +369,59 @@ collect_ci_status() {
     ci_section+=$'\n''```'$'\n'
 
     echo "$ci_section" >> "$LATHE_SESSION/snapshot.txt"
+}
+
+# ---------------------------------------------------------------------------
+# Falsification suite — run .lathe/falsify.sh and record the result
+#
+# The structural defense against Goodhart's Law: instead of telling the agent
+# "be adversarial," the engine runs the project's own falsification suite each
+# cycle and surfaces the result in the snapshot. A failing claim is treated by
+# the agent the same way as a failing CI check — top priority, fix first.
+#
+# `falsify.sh` is written by lathe init alongside `claims.md`. It exits 0 if
+# all load-bearing claims hold, non-zero if any are violated.
+# ---------------------------------------------------------------------------
+
+collect_falsification() {
+    local out="$LATHE_SESSION/snapshot.txt"
+
+    if [[ ! -x "$LATHE_DIR/falsify.sh" ]]; then
+        echo "" >> "$out"
+        echo "## Falsification" >> "$out"
+        echo "(no .lathe/falsify.sh — falsification suite not installed)" >> "$out"
+        return 0
+    fi
+
+    log "Running falsification suite ..."
+    local fal_output
+    local fal_rc=0
+    fal_output=$("$LATHE_DIR/falsify.sh" 2>&1) || fal_rc=$?
+
+    echo "" >> "$out"
+    echo "## Falsification" >> "$out"
+    echo '```' >> "$out"
+    if (( fal_rc == 0 )); then
+        echo "PASS — all claims hold" >> "$out"
+    else
+        echo "FAIL (exit $fal_rc) — one or more claims violated" >> "$out"
+    fi
+    if [[ -n "$fal_output" ]]; then
+        echo "" >> "$out"
+        echo "$fal_output" >> "$out"
+    fi
+    echo '```' >> "$out"
+
+    if [[ -f "$LATHE_DIR/claims.md" ]]; then
+        echo "" >> "$out"
+        echo "(see .lathe/claims.md for the registry of claims being tested)" >> "$out"
+    fi
+
+    if (( fal_rc == 0 )); then
+        log "Falsification: PASS"
+    else
+        log "Falsification: FAIL (exit $fal_rc)"
+    fi
 }
 
 # ---------------------------------------------------------------------------
@@ -519,6 +576,7 @@ run_agent() {
         prompt+="- Otherwise: implement your one change, commit, push to \`$session_branch\`."$'\n\n'
         prompt+="The engine handles merging PRs when CI passes and creating fresh branches. You never need to merge PRs or create branches yourself."$'\n'
         prompt+="After implementing your change: \`git add\`, \`git commit\`, \`git push origin $session_branch\`. If no PR exists yet, create one with \`gh pr create --base $session_base\`."$'\n\n'
+        prompt+="**Changelog:** After completing your work, write a brief changelog to \`.lathe/session/changelog.md\` describing what you changed and which stakeholder it benefits. This is read by the engine for retros — if you don't write it, the retro has nothing to review."$'\n\n'
     fi
 
     # Previous cycle changelog
@@ -553,6 +611,21 @@ run_agent() {
                 prompt+=$'\n''```'$'\n\n'
             fi
         done
+    fi
+
+    # Red-team mode: every Nth cycle, the goal shifts from build to falsify.
+    # This is the structural rhythm that prevents falsification work from being
+    # deferred indefinitely when the snapshot looks clean.
+    if (( cycle > 0 )) && (( cycle % RED_TEAM_INTERVAL == 0 )); then
+        prompt+="---"$'\n'
+        prompt+="# Red-Team Cycle"$'\n\n'
+        prompt+="This cycle, your job is **not** to add features. It is to falsify."$'\n\n'
+        prompt+="Read \`.lathe/claims.md\`. Pick one claim that has not been adversarially tested recently — or one load-bearing assumption in the project that should be a claim but isn't yet. Then do one of these things:"$'\n\n'
+        prompt+="1. **Try to break it.** Construct an input or scenario that would falsify the claim. If it breaks, that is the cycle's work — fix it (or document it as a known limitation in \`claims.md\` if a fix is out of scope) and add the case to \`falsify.sh\` so it cannot silently regress."$'\n'
+        prompt+="2. **Strengthen the fence.** If the claim holds, extend \`falsify.sh\` with a case that would have caught a plausible regression. The point is to make the falsification suite *adversarial*, not aspirational."$'\n'
+        prompt+="3. **Surface a missing claim.** If you find a load-bearing promise that isn't in \`claims.md\` yet, add it (with the stakeholder it serves) and add a falsification case for it."$'\n\n'
+        prompt+="The cycle still produces one commit and one changelog. The change is just falsification work, not feature work. Polishing visible things is explicitly off-limits this cycle — if the snapshot looks clean, that is the *signal* to red-team it, not to skip."$'\n\n'
+        prompt+="In the changelog's **Who This Helps** section, name the stakeholder whose promise you tested and what regression this cycle now prevents."$'\n\n'
     fi
 
     # Pre-cycle hook
@@ -687,9 +760,10 @@ engine_start() {
             # If we're on base (post-merge or first cycle), create a work branch
             create_session_branch
 
-            # Phase 1: Snapshot + CI status
+            # Phase 1: Snapshot + CI status + falsification suite
             collect_snapshot
             collect_ci_status
+            collect_falsification
 
             # Phase 2: Agent implements one change
             run_agent "$cycle" "$tool" || true
@@ -699,6 +773,9 @@ engine_start() {
             archive_cycle "$cycle"
             safety_net
             discover_pr
+
+            # Give GitHub time to register the latest push before polling CI
+            sleep 30
 
             # Phase 4: Wait for CI, merge if green
             # This makes each cycle self-contained: do work, then land it.
@@ -800,6 +877,24 @@ engine_stop() {
     fi
 
     # ---------------------------------------------------------------------------
+    # 1b. Kill orphaned agent process if engine tree didn't catch it
+    # ---------------------------------------------------------------------------
+    local orphans
+    orphans=$(_find_lathe_agent)
+    if [[ -n "$orphans" ]]; then
+        while IFS= read -r line; do
+            local agent_pid
+            agent_pid=$(echo "$line" | awk '{print $1}')
+            log "Killing orphaned agent (PID $agent_pid) ..."
+            kill_tree "TERM" "$agent_pid"
+            sleep 2
+            if kill -0 "$agent_pid" 2>/dev/null; then
+                kill_tree "9" "$agent_pid"
+            fi
+        done <<< "$orphans"
+    fi
+
+    # ---------------------------------------------------------------------------
     # 2. Git + state teardown
     # ---------------------------------------------------------------------------
     teardown_session
@@ -829,6 +924,32 @@ engine_status() {
     fi
 }
 
+_find_lathe_agent() {
+    # Find claude processes spawned by lathe (--dangerously-skip-permissions --print)
+    # whose cwd is this repo. Outputs: PID ELAPSED  (one line per match, or nothing)
+    local repo_dir
+    repo_dir=$(pwd -P)
+
+    # Find claude processes with lathe's distinctive flags
+    local pids
+    pids=$(pgrep -f 'claude.*--dangerously-skip-permissions.*--print' 2>/dev/null) || return 0
+
+    local pid cwd elapsed
+    for pid in $pids; do
+        # Get process cwd via lsof
+        cwd=$(lsof -p "$pid" 2>/dev/null | awk '$4 == "cwd" {print $NF}') || true
+        [[ -n "$cwd" ]] || continue
+        cwd=$(cd "$cwd" 2>/dev/null && pwd -P) || continue
+
+        case "$cwd" in
+            "$repo_dir"|"$repo_dir"/*)
+                elapsed=$(ps -p "$pid" -o etime= 2>/dev/null | tr -d ' ' || echo "?")
+                echo "$pid $elapsed"
+                ;;
+        esac
+    done
+}
+
 _print_status() {
     local project_name
     project_name=$(basename "$(pwd)")
@@ -842,9 +963,25 @@ _print_status() {
         echo "  Running — PID $pid, uptime $elapsed"
     elif [[ ! -f "$SESSION_FILE" ]]; then
         echo "  No active session. Run 'lathe start' to begin."
-        return 0
     else
         echo "  Stopped (session state exists — may need 'lathe stop' to clean up)"
+    fi
+
+    # Detect lathe's own agent process
+    local agent_info
+    agent_info=$(_find_lathe_agent)
+    if [[ -n "$agent_info" ]]; then
+        local agent_pid agent_elapsed
+        agent_pid=$(echo "$agent_info" | awk '{print $1}')
+        agent_elapsed=$(echo "$agent_info" | awk '{print $2}')
+        if is_running; then
+            echo "  Agent  — PID $agent_pid, uptime $agent_elapsed"
+        else
+            echo ""
+            echo "  ** ORPHANED AGENT — PID $agent_pid, uptime $agent_elapsed **"
+            echo "  Engine is dead but the agent process is still running."
+            echo "  Kill with: kill $agent_pid"
+        fi
     fi
 
     echo ""

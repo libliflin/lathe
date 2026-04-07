@@ -74,9 +74,13 @@ There are exactly two categories of state under `.lathe/`:
 .lathe/agent.md              — Behavioral instructions, stakeholder map, priorities
 .lathe/alignment-summary.md  — Plain-English summary of alignment decisions
 .lathe/snapshot.sh           — Project state collection script
+.lathe/claims.md             — Registry of load-bearing promises, per stakeholder
+.lathe/falsify.sh            — Adversarial suite, run every cycle by the engine
 .lathe/skills/*.md           — Project-specific knowledge
 .lathe/refs/*.md             — User-curated reference material
 ```
+
+The falsification suite (`claims.md` + `falsify.sh`) is the structural defense against Goodhart and metric-gaming. The engine runs `falsify.sh` from `collect_falsification` each cycle and appends a `## Falsification` block to the snapshot. Every `RED_TEAM_INTERVAL` cycles (currently 4), `run_agent` injects a "Red-Team Cycle" prompt section that shifts the cycle's job from build to falsify. Both files are config — the agent extends them as the project grows.
 
 **Session** — born on `lathe start`, dies on `lathe stop`, everything wiped:
 
@@ -112,4 +116,5 @@ History lives inside `session/` (gitignored) — it only exists to feed the retr
 - Smart decisions (PRs, merges, CI fixes) belong in the agent prompt, not shell. The engine is plumbing.
 - `gh` CLI is optional but enables PR/CI workflow. Without it, branch mode still works (agent pushes, no PR management).
 - CI wait timeout is 5 minutes. Container pulls alone can take 1-2 min. If CI doesn't finish, the agent sees "timed out" in the snapshot and can address it.
-- The cycle order is: snapshot → agent → archive → safety net → discover PR → CI wait → auto-merge. Each cycle is self-contained: do work, then land it. Teardown only closes work that didn't pass CI.
+- The cycle order is: snapshot → CI status → falsification → agent → archive → safety net → discover PR → CI wait → auto-merge. Each cycle is self-contained: do work, then land it. Teardown only closes work that didn't pass CI.
+- Falsification failures appear in the snapshot and are treated by the agent as top-priority, like CI failures. The agent must never weaken `falsify.sh` to make it pass.
