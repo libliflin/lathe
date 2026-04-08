@@ -190,13 +190,27 @@ cmd_init() {
 
     echo "  Agent generated via $tool."
 
+    # Safety net: the meta-prompt instructs the init agent to chmod +x falsify.sh,
+    # but agents sometimes forget. Without the executable bit, the engine silently
+    # skips the falsification suite (engine/loop.sh checks `[[ -x ... ]]`).
+    if [[ -f "$LATHE_DIR/falsify.sh" && ! -x "$LATHE_DIR/falsify.sh" ]]; then
+        chmod +x "$LATHE_DIR/falsify.sh"
+    fi
+
     # Ensure .lathe/session/ is gitignored (all ephemeral engine state)
-    # Clean up old-style granular entries from previous versions
+    # Clean up old-style granular entries from previous versions.
+    # Portable in-place edit (BSD sed needs `-i ''`, GNU sed on Linux/Git Bash
+    # treats `''` as a filename) — use a temp file and move it back.
     if [[ -f .gitignore ]]; then
-        sed -i '' '/^\.lathe\/state/d' .gitignore
-        sed -i '' '/^# Lathe logs/d' .gitignore
-        # Remove blank lines that may be left behind (collapse runs of empty lines)
-        sed -i '' '/^$/N;/^\n$/d' .gitignore
+        local tmp_gitignore
+        tmp_gitignore=$(mktemp) || tmp_gitignore=".gitignore.lathe.tmp.$$"
+        # Strip old-style entries first, then collapse runs of blank lines.
+        # Done as two passes because the blank-line collapse uses `N`, which
+        # would otherwise pull the next line into the pattern space and hide
+        # it from the deletion patterns.
+        sed -e '/^\.lathe\/state/d' -e '/^# Lathe logs/d' .gitignore \
+            | sed -e '/^$/N;/^\n$/d' > "$tmp_gitignore" \
+            && mv "$tmp_gitignore" .gitignore
     fi
     if ! grep -qF ".lathe/session/" .gitignore 2>/dev/null; then
         [[ -f .gitignore ]] || touch .gitignore
