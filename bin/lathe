@@ -28,6 +28,55 @@ LATHE_DIR=".lathe"
 
 die() { echo "error: $*" >&2; exit 1; }
 
+# ---------------------------------------------------------------------------
+# Spinner — for long-running operations like `init` (5-10 min agent runs)
+# ---------------------------------------------------------------------------
+# Usage:
+#   spinner_start "Analyzing project and generating agent"
+#   ...long thing...
+#   spinner_stop
+#
+# Suppressed when stdout is not a TTY (e.g. piped, CI). Always safe to call.
+
+LATHE_SPINNER_PID=""
+
+spinner_start() {
+    local label="$1"
+    [[ -t 1 ]] || { echo "  $label ..."; return; }
+
+    local start
+    start=$(date +%s)
+    # Subshell: rotate frames + show elapsed time. Parent kills it via PID.
+    (
+        local frames='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+        local i=0
+        while :; do
+            local now elapsed mins secs frame
+            now=$(date +%s)
+            elapsed=$(( now - start ))
+            mins=$(( elapsed / 60 ))
+            secs=$(( elapsed % 60 ))
+            frame=${frames:i:1}
+            printf '\r  %s %s  %dm%02ds\033[K' "$frame" "$label" "$mins" "$secs"
+            i=$(( (i + 1) % ${#frames} ))
+            sleep 0.1
+        done
+    ) &
+    LATHE_SPINNER_PID=$!
+    # Make sure the spinner dies if the script is interrupted.
+    trap 'spinner_stop' EXIT INT TERM
+}
+
+spinner_stop() {
+    [[ -n "$LATHE_SPINNER_PID" ]] || return 0
+    kill "$LATHE_SPINNER_PID" 2>/dev/null || true
+    wait "$LATHE_SPINNER_PID" 2>/dev/null || true
+    LATHE_SPINNER_PID=""
+    # Clear the spinner line.
+    [[ -t 1 ]] && printf '\r\033[K'
+    trap - EXIT INT TERM
+}
+
 ensure_initialized() {
     [[ -d "$LATHE_DIR" ]] || die "Not a lathe project. Run 'lathe init' first."
     [[ -f "$LATHE_DIR/agent.md" ]] || die "Missing $LATHE_DIR/agent.md. Run 'lathe init' first."
@@ -84,18 +133,28 @@ tpl = tpl.replace('{{INTERACTIVE}}', '''$interactive_block''')
 print(tpl)
 " <<< "$priority_stack" > "$tmp_prompt"
 
-    # Call AI — let it read the project and write .lathe/agent.md directly
+    # Call AI — let it read the project and write .lathe/agent.md directly.
+    # Interactive mode shows the agent live; autonomous mode is silent for
+    # 5–10 minutes, so capture output to a log and show a spinner instead.
     local rc=0
+    local log="$LATHE_DIR/init.log"
     if [[ "$tool" == "claude" ]]; then
         if [[ "$interactive" == "true" ]]; then
-            # Interactive: open Claude Code conversation, user can participate
             claude "$(cat "$tmp_prompt")" --allowedTools "Read,Write,Edit,Glob,Grep" || rc=$?
         else
-            # Autonomous: run silently, exit when done
-            claude -p "$(cat "$tmp_prompt")" --allowedTools "Read,Write,Edit,Glob,Grep" || rc=$?
+            spinner_start "Analyzing project and generating agent"
+            claude -p "$(cat "$tmp_prompt")" --allowedTools "Read,Write,Edit,Glob,Grep" \
+                > "$log" 2>&1 || rc=$?
+            spinner_stop
         fi
     elif [[ "$tool" == "amp" ]]; then
-        amp --dangerously-allow-all < "$tmp_prompt" || rc=$?
+        if [[ "$interactive" == "true" ]]; then
+            amp --dangerously-allow-all < "$tmp_prompt" || rc=$?
+        else
+            spinner_start "Analyzing project and generating agent"
+            amp --dangerously-allow-all < "$tmp_prompt" > "$log" 2>&1 || rc=$?
+            spinner_stop
+        fi
     else
         rm -f "$tmp_prompt"
         return 1
@@ -160,9 +219,8 @@ cmd_init() {
     cp "$template_dir/snapshot.sh" "$LATHE_DIR/snapshot.sh"
     chmod +x "$LATHE_DIR/snapshot.sh"
 
-    # Generate agent.md and skills via AI
-    echo "  Analyzing project and generating agent ..."
-
+    # Generate agent.md and skills via AI. generate_agent shows a spinner
+    # in autonomous mode; interactive mode prints its own preamble.
     local gen_exit=0
     generate_agent "$tool" "$project_type" "$interactive" || gen_exit=$?
 
@@ -170,8 +228,14 @@ cmd_init() {
         echo ""
         echo "  ERROR: Agent generation failed (exit $gen_exit)."
         echo "  The AI could not analyze this project. Check that '$tool' is installed and working."
-        echo "  You can retry with: lathe init --tool $tool"
+        if [[ -s "$LATHE_DIR/init.log" ]]; then
+            echo ""
+            echo "  --- last 20 lines of $LATHE_DIR/init.log ---"
+            tail -n 20 "$LATHE_DIR/init.log" | sed 's/^/  /'
+            echo "  --- end ---"
+        fi
         echo ""
+        echo "  You can retry with: lathe init --tool $tool"
         echo "  If this persists, please report it: https://github.com/libliflin/lathe/issues"
         $reinit || rm -rf "$LATHE_DIR"
         exit 1
@@ -190,13 +254,27 @@ cmd_init() {
 
     echo "  Agent generated via $tool."
 
+    # Safety net: the meta-prompt instructs the init agent to chmod +x falsify.sh,
+    # but agents sometimes forget. Without the executable bit, the engine silently
+    # skips the falsification suite (engine/loop.sh checks `[[ -x ... ]]`).
+    if [[ -f "$LATHE_DIR/falsify.sh" && ! -x "$LATHE_DIR/falsify.sh" ]]; then
+        chmod +x "$LATHE_DIR/falsify.sh"
+    fi
+
     # Ensure .lathe/session/ is gitignored (all ephemeral engine state)
-    # Clean up old-style granular entries from previous versions
+    # Clean up old-style granular entries from previous versions.
+    # Portable in-place edit (BSD sed needs `-i ''`, GNU sed on Linux/Git Bash
+    # treats `''` as a filename) — use a temp file and move it back.
     if [[ -f .gitignore ]]; then
-        sed -i '' '/^\.lathe\/state/d' .gitignore
-        sed -i '' '/^# Lathe logs/d' .gitignore
-        # Remove blank lines that may be left behind (collapse runs of empty lines)
-        sed -i '' '/^$/N;/^\n$/d' .gitignore
+        local tmp_gitignore
+        tmp_gitignore=$(mktemp) || tmp_gitignore=".gitignore.lathe.tmp.$$"
+        # Strip old-style entries first, then collapse runs of blank lines.
+        # Done as two passes because the blank-line collapse uses `N`, which
+        # would otherwise pull the next line into the pattern space and hide
+        # it from the deletion patterns.
+        sed -e '/^\.lathe\/state/d' -e '/^# Lathe logs/d' .gitignore \
+            | sed -e '/^$/N;/^\n$/d' > "$tmp_gitignore" \
+            && mv "$tmp_gitignore" .gitignore
     fi
     if ! grep -qF ".lathe/session/" .gitignore 2>/dev/null; then
         [[ -f .gitignore ]] || touch .gitignore
