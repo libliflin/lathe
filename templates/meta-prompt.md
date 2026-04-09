@@ -4,6 +4,16 @@ Your job: read this project deeply, understand who it serves, and generate the f
 
 {{INTERACTIVE}}
 
+## Two kinds of sentences in this prompt
+
+This prompt contains two kinds of instructions, and it's worth telling them apart as you read:
+
+**Rules of the game.** Sentences that define what a cycle *is*. "One change per cycle." "Never skip validation." "Falsification failures are top priority." These aren't restraints on a free agent — they're the shape of the work. A cycle that does two things isn't a bad cycle, it's not a lathe cycle at all. Treat these as load-bearing structure.
+
+**Capabilities.** Sentences that describe what the agent can do and when it's useful. "Stress-testing with realistic inputs is first-class work." "A claim can describe behavior or shape." These expand the vocabulary the agent has available — they don't prescribe when to use them.
+
+Keep both in `agent.md` but don't blur them. The runtime agent should be able to tell which sentences are non-negotiable structure and which are guidance it applies with judgment.
+
 ## What You Must Produce
 
 Write ALL of the following files:
@@ -22,7 +32,7 @@ This is the core document. An autonomous agent will read this file at the start 
 - What does success look like for them?
 - What would make them trust this project? What would make them leave?
 - Where is the project currently failing them?
-- **What is the load-bearing claim** — the specific promise this project is making them that, if it broke, would make them leave? You will encode these in `.lathe/claims.md` as part of the falsification suite.
+- **What is the load-bearing claim** — the specific promise this project is making them that, if it broke, would make them leave? A claim can describe system behavior (*"`lathe stop` always leaves the working tree on the base branch"*) or system shape (*"the IR accommodates cache-line metadata on every node type, so cache-aware codegen remains reachable"*) — both count. You will encode these in `.lathe/claims.md` as part of the falsification suite.
 
 Maintainers/contributors are always a stakeholder. Then look at the code and identify who else: library consumers, CLI users, API clients, operators, downstream teams. Be concrete — use what you see in the code, not what you imagine.
 
@@ -46,16 +56,16 @@ End with: "Every cycle, ask: **which stakeholder's journey can I make noticeably
 
 **The Job.** The cycle: read snapshot, pick the highest-value change, implement it, validate it, write the changelog. Frame "pick" as an act of empathy — imagine a real person encountering this project today.
 
-The pick step has a bias to watch for: tidying visible things feels productive but is often low-value. The highest-value change is frequently something that doesn't exist yet — a test fixture that would catch a real bug, an error path nobody exercised, an input shape nobody tried. If the snapshot shows everything passing and clean, the question isn't "what can I polish?" — it's "what hasn't been tested against reality yet?"
+The highest-value change is often something that doesn't exist yet — a test fixture that would catch a real bug, an error path nobody exercised, an input shape nobody tried. When the snapshot shows everything passing and clean, that's often the signal to stress-test: "what hasn't been tested against reality yet?"
 
 **What Matters Now.** Not a generic checklist. Specific questions that reflect where this project actually is right now and what its stakeholders need. These should change if you re-ran init after significant progress.
 
 Assess the project's maturation stage and write questions appropriate to it:
 - **Not yet working**: questions about getting the core path functional
-- **Core works, untested at scale**: questions about whether the tool survives realistic inputs — diverse data shapes, edge cases from typical use, production-scale volumes. You can always build test inputs that match the shape and scale of real usage without needing external systems. This is the critical stage where the lathe is tempted to polish instead of stress-test.
+- **Core works, untested at scale**: questions about whether the tool survives realistic inputs — diverse data shapes, edge cases from typical use, production-scale volumes. You can always build test inputs that match the shape and scale of real usage without needing external systems. At this stage, stress-testing is first-class work — a cycle that builds a realistic fixture and exercises the tool with it is often the highest-value cycle available.
 - **Battle-tested**: questions about DX, performance, documentation, missing features, CI/CD maturity
 
-Be honest about which stage the project is in. If Generate produces output but the test suite only uses 2-column toy inputs, the project is in stage 2, not stage 3 — regardless of coverage percentage.
+Be honest about which stage the project is in. Coverage percentage is not a proxy for maturity — a test suite that only exercises toy inputs is stage 2 work, no matter how many lines it covers.
 
 Include: "Never treat any list — in a README, an issue, or a snapshot — as a queue to grind through. Lists are context."
 
@@ -67,11 +77,11 @@ Add: "Within any layer, always prefer the change that most improves a stakeholde
 
 **One Change Per Cycle.** "Each cycle makes exactly one improvement. If you try to do two things you'll do zero things well."
 
-**Staying on Target.** Anti-patterns framed around stakeholder value:
-- Adding more of the same when the core experience isn't great yet
-- Building something whose prerequisite doesn't exist
-- Polishing internals users never see when user-facing gaps remain
-- **Fidgeting instead of stress-testing.** When the core works, the temptation is to polish — README tweaks, doc alignment, flag additions. Each one is small and correct. But the stakeholder doesn't need a prettier README, they need confidence the tool handles diverse, realistic inputs. If you've spent 3+ cycles on polish and haven't tested the core against inputs that match the shape and scale of typical usage, you're avoiding the hard work. You can always construct realistic test inputs yourself — you don't need an external system or a real user to build a test fixture with 15 tables, 150 columns, and diverse naming patterns. Ask: "have I tested this against inputs that look like what a real user would feed it?" If not, build those inputs — that's the next cycle, not another README edit.
+**Staying on Target.** What makes a pick valid:
+- The core experience is better after this cycle than before it
+- The prerequisites for this change actually exist in the code
+- If polish is the work, the user-facing gaps are already closed
+- When the core works, stress-testing with realistic inputs is a stakeholder-facing change — a cycle that constructs a fixture with 15 tables, 150 columns, and diverse naming patterns and exercises the tool against it is exactly the shape of work the stakeholder who runs the tool is asking for. You don't need an external system or a real user to build such a fixture.
 
 **Changelog Format:**
 ```markdown
@@ -98,12 +108,13 @@ Add: "Within any layer, always prefer the change that most improves a stakeholde
 
 **Working with the Falsification Suite.**
 
-Each cycle, the engine runs `.lathe/falsify.sh` and includes its result in the snapshot under `## Falsification`. This suite encodes the load-bearing claims this project makes to its stakeholders — promises that, if broken, would make someone leave.
+Each cycle, the engine runs `.lathe/falsify.sh` directly and appends its result to the snapshot under `## Falsification`. This is handled by the engine, not by `snapshot.sh` — do not invoke `falsify.sh` from inside `snapshot.sh`, it would just run twice. The suite encodes the load-bearing claims this project makes to its stakeholders — promises that, if broken, would make someone leave.
 
 - A failing claim is top priority, like a failing CI check. Fix it before any new work.
-- When a new feature creates a new promise, extend `claims.md` and add a case to `falsify.sh`. The suite must grow with the project, not stay frozen at init.
+- When a new feature creates a new promise, extend `claims.md` and add a case to `falsify.sh`. The suite grows with the project.
+- When a claim no longer fits the project, retire it in `claims.md` with reasoning. Claims have lifecycles.
 - Periodically the engine will inject instructions for a "red-team cycle" — that cycle's job is to falsify, not to build. Follow them.
-- Adversarial means *trying to break the promise*, not *checking the happy path*. A passing falsification suite that only exercises easy inputs is worse than no suite, because it provides false confidence.
+- Adversarial means *trying to break the promise*, not *checking the happy path*. A case that only exercises easy inputs doesn't defend the claim; inputs that would plausibly break it do.
 
 **Working with CI/CD and PRs.**
 
@@ -118,7 +129,7 @@ The lathe runs on a branch and uses PRs to trigger CI. The engine provides sessi
 
 Encode this in agent.md so the runtime agent understands the PR/CI workflow is part of its job, not something happening around it.
 
-**Rules.**
+**Rules.** These are the rules of the game — they define what a cycle is, not warnings against misbehavior:
 - Never skip validation
 - Never do two things
 - Never fix higher layers while lower ones are broken
@@ -126,7 +137,7 @@ Encode this in agent.md so the runtime agent understands the PR/CI workflow is p
 - If stuck 3+ cycles on the same issue, change approach entirely
 - Every change must have a clear stakeholder benefit
 - Falsification failures are top priority, like CI failures
-- Never weaken `falsify.sh` to make it pass — fix the underlying claim or document the limitation in `claims.md`
+- If a claim no longer fits the project, retire it in `claims.md` with reasoning rather than softening the check — the suite grows and changes with the project, just not silently
 
 Add project-specific rules based on what you observe (e.g., if there are tests: "Never remove tests to make things pass").
 
@@ -153,14 +164,26 @@ Keep refs focused. Don't dump entire documents — curate what's relevant to the
 
 ### 3. `.lathe/claims.md` and `.lathe/falsify.sh` — The Falsification Suite
 
-This is the structural defense against Goodhart's Law and metric-gaming. The runtime agent's optimization target is the snapshot — so the snapshot has to encode what actually matters, not just what is easy to measure. Telling the agent "be adversarial" in a prompt loses to the gradient. Putting a falsification result in the snapshot every cycle does not.
+Claims are how the project tells the agent what must hold true for each stakeholder. The engine runs the falsification suite every cycle and puts the result in the snapshot, so claims stay visible alongside whatever else the agent is working on — they're part of the cycle's context, not a separate concern.
 
-**`.lathe/claims.md`** is a registry of the load-bearing promises this project makes to its stakeholders. For each stakeholder you identified, list the specific claim(s) that, if violated, would cause them to leave. Be concrete:
+**`.lathe/claims.md`** is a registry of the load-bearing properties this project must preserve for its stakeholders. A claim can be behavioral (*what the system does*) or structural (*the shape the system keeps so a stakeholder's concern remains reachable*). Both count, and both are falsifiable.
 
-- Bad: "the CLI is reliable"
-- Good: "`lathe stop` always leaves the working tree on the base branch with no uncommitted changes, regardless of what the agent did during the cycle"
+**Structural claims check the shape itself, not the description of the shape.** This distinction is easy to get wrong. A claim like *"every IR type has a `cache-line:` comment"* is satisfied by writing text near the type — it defends the *documentation*, not the *layout*. The layout can rot freely as long as the comments get updated alongside.
 
-Tag each claim with the stakeholder it serves. Aim for 3–8 claims at init time — the most load-bearing ones, not every promise the project makes. The runtime agent will extend this list as the project grows.
+The sharp test: **if someone could satisfy this claim by only editing comments, it is not a structural claim.** A real structural claim fails when the structure changes even if the documentation is updated to match.
+
+For each stakeholder you identified, list the specific claim(s) that, if violated, would cause them to leave. Be concrete:
+
+- Bad: "the CLI is reliable" (vague)
+- Bad (documentation dressed as structural): "every public type in `ir.rs` has 'cache-line' in its doc comment" — satisfied by writing comments, defends nothing about layout
+- Good (behavioral): "`lathe stop` always leaves the working tree on the base branch with no uncommitted changes, regardless of what the agent did during the cycle"
+- Good (structural, size): "`size_of::<Token>() == 8`" — fails if the struct grows, regardless of comments
+- Good (structural, shape): "every variant of `Instr` satisfies `size_of::<Instr>() <= 64`" — fails if the layout exceeds the cache-line budget, regardless of comments
+- Good (structural, presence): "every public type declaration in `ir.rs` has a `cache_line: CacheLine` field" — checkable via AST/grep on the declaration itself, not on surrounding prose
+
+Structural claims are typically checked with `size_of::<T>()` assertions, AST inspection of declarations, or grep against the code itself — not against comments. If your check involves grepping for natural-language strings in comments, you are probably checking documentation, not structure.
+
+Tag each claim with the stakeholder it serves. Aim for 3–8 claims at init time — the most load-bearing ones, not every promise the project makes. The runtime agent extends and retires claims as the project grows.
 
 **`.lathe/falsify.sh`** is an executable bash script that exercises those claims with adversarial inputs and exits non-zero if any claim is violated. Rules:
 
@@ -170,11 +193,14 @@ Tag each claim with the stakeholder it serves. Aim for 3–8 claims at init time
 - Must not require network or external services. Construct adversarial fixtures locally — that is the whole point.
 - Use the project's own toolchain. If the project is Go, write Go test fixtures and shell out to `go test`. If it is a CLI, exercise the CLI with constructed inputs and check stdout/exit codes.
 - Each case targets one named claim from `claims.md`. The output should make it obvious which claim broke.
-- Adversarial means *trying to break the promise*, not *checking the happy path*. If a claim says "handles 150-column inputs," the case feeds 150 columns with awkward names, mixed encodings, and edge whitespace — not three columns named foo/bar/baz.
+- Structural claims use `size_of::<T>()` assertions, AST inspection, or grep against declarations. Behavioral claims shell out to the project's own toolchain. `falsify.sh` runs both the same way — exit non-zero on violation.
+- **Print a final summary line** regardless of pass/fail — something like `=== Summary === passed: N failed: M`. This is the sentinel that lets init verify the script ran to completion rather than dying silently mid-check.
+- **Beware `set -euo pipefail` with `grep` in pipelines.** `grep` legitimately returns 1 when it finds nothing, and under `pipefail` that kills the whole script with no error output. If you use `grep` inside a pipeline or command substitution, append `|| true` (e.g. `grep -oE 'pat' || true`), or wrap the section in `set +o pipefail; ...; set -o pipefail`. This is the most common reason a `falsify.sh` appears to "exit 1 with no explanation."
+- Adversarial means *trying to break the promise*, not *checking the happy path*. If a claim says "handles 150-column inputs," the case feeds 150 columns with awkward names, mixed encodings, and edge whitespace. Easy inputs don't defend the claim.
 
-The runtime agent treats falsification failures the same way it treats CI failures: top priority, fix before any new work. It can also extend both files as the project evolves — when a new feature creates a new promise, the agent adds it to the registry and writes a falsification case.
+The runtime agent treats falsification failures the same way it treats CI failures: top priority, fix before any new work. It extends and retires claims as the project evolves — new promises become new claims, and claims that no longer fit get retired in `claims.md` with reasoning.
 
-If the project is too immature for any load-bearing claims to exist yet (not even "the build succeeds"), write a `claims.md` that says so honestly and a `falsify.sh` that exits 0 with a comment explaining why. **Do not invent claims to fill the file.** A fake claim is worse than no claim — it provides false confidence and trains the agent to game the metric.
+If the project is too immature for any load-bearing claims to exist yet (not even "the build succeeds"), write a `claims.md` that says so honestly and a `falsify.sh` that exits 0 with a comment explaining why. An empty claims registry is a valid starting state — the runtime agent adds claims as the project grows. Only write claims you actually believe the project is making.
 
 ### 4. `.lathe/alignment-summary.md` — What the User Should Verify
 
@@ -197,7 +223,11 @@ This file is for the user, not the runtime agent. Write it like you're briefing 
 3. Identify the stakeholders from what you see — not from templates. For each one, also identify the load-bearing claim they are trusting.
 4. Look at the current state: what builds, what's broken, what's missing, what's rough.
 5. Write agent.md and skills that encode everything the runtime agent needs.
-6. Write `claims.md` and `falsify.sh`. Verify `falsify.sh` is executable and runs in seconds. Run it once and confirm it exits 0 (or, if a claim is currently broken, that it exits non-zero with a clear message — that is also a valid starting state, and the runtime agent will prioritize fixing it).
+6. Write `claims.md` and `falsify.sh`. Verify `falsify.sh` is executable and runs in seconds. Run it once and read the *output*, not just the exit code.
+   - **Confirm the summary line printed.** Your `falsify.sh` must end with a recognizable terminal line (e.g. `=== Summary === passed: N failed: M`). If you run it and don't see that line in the output, the script died early — most often from `set -euo pipefail` + a `grep` in a pipeline that legitimately returned 1 (no match). Fix it with `grep ... || true` or by restructuring the check. Do not finish init until the summary line appears.
+   - If the summary printed and all claims are "ok," good.
+   - If the summary printed with clear per-claim failures, that's also a valid starting state — the runtime agent will prioritize fixing the broken claim.
+   - If the output contains bash errors (`unbound variable`, `command not found`, syntax errors, unexpected tokens), or if it exits non-zero with no summary line, that's a bug in *your* script, not a failed claim — fix it before finishing init. A silently-broken `falsify.sh` trains the runtime agent that the suite is noise.
 7. Write `alignment-summary.md` last.
 
 The quality of what you write here determines the quality of every cycle that follows. Take your time. Read thoroughly. Be specific.

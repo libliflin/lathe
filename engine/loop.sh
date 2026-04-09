@@ -374,8 +374,7 @@ collect_ci_status() {
 # ---------------------------------------------------------------------------
 # Falsification suite — run .lathe/falsify.sh and record the result
 #
-# The structural defense against Goodhart's Law: instead of telling the agent
-# "be adversarial," the engine runs the project's own falsification suite each
+# The engine runs the project's own falsification suite each
 # cycle and surfaces the result in the snapshot. A failing claim is treated by
 # the agent the same way as a failing CI check — top priority, fix first.
 #
@@ -613,18 +612,17 @@ run_agent() {
         done
     fi
 
-    # Red-team mode: every Nth cycle, the goal shifts from build to falsify.
-    # This is the structural rhythm that prevents falsification work from being
-    # deferred indefinitely when the snapshot looks clean.
+    # Red-team mode: every Nth cycle, the cycle's work is falsification instead
+    # of building. This gives the claims registry its own dedicated cadence.
     if (( cycle > 0 )) && (( cycle % RED_TEAM_INTERVAL == 0 )); then
         prompt+="---"$'\n'
         prompt+="# Red-Team Cycle"$'\n\n'
-        prompt+="This cycle, your job is **not** to add features. It is to falsify."$'\n\n'
-        prompt+="Read \`.lathe/claims.md\`. Pick one claim that has not been adversarially tested recently — or one load-bearing assumption in the project that should be a claim but isn't yet. Then do one of these things:"$'\n\n'
+        prompt+="This cycle's work is falsification, not feature-building."$'\n\n'
+        prompt+="Read \`.lathe/claims.md\`. Pick one claim that hasn't been adversarially tested recently — or one load-bearing property (behavioral or structural) that should be a claim but isn't yet. Then do one of these things:"$'\n\n'
         prompt+="1. **Try to break it.** Construct an input or scenario that would falsify the claim. If it breaks, that is the cycle's work — fix it (or document it as a known limitation in \`claims.md\` if a fix is out of scope) and add the case to \`falsify.sh\` so it cannot silently regress."$'\n'
-        prompt+="2. **Strengthen the fence.** If the claim holds, extend \`falsify.sh\` with a case that would have caught a plausible regression. The point is to make the falsification suite *adversarial*, not aspirational."$'\n'
-        prompt+="3. **Surface a missing claim.** If you find a load-bearing promise that isn't in \`claims.md\` yet, add it (with the stakeholder it serves) and add a falsification case for it."$'\n\n'
-        prompt+="The cycle still produces one commit and one changelog. The change is just falsification work, not feature work. Polishing visible things is explicitly off-limits this cycle — if the snapshot looks clean, that is the *signal* to red-team it, not to skip."$'\n\n'
+        prompt+="2. **Strengthen the fence.** If the claim holds, extend \`falsify.sh\` with a case that would have caught a plausible regression. Adversarial cases defend the claim; cases that only exercise easy inputs don't."$'\n'
+        prompt+="3. **Surface a missing claim.** If you find a load-bearing property that isn't in \`claims.md\` yet, add it (with the stakeholder it serves and whether it's behavioral or structural) and add a falsification case for it."$'\n\n'
+        prompt+="The cycle still produces one commit and one changelog. Features and polish resume next cycle. A clean snapshot is the signal that claims haven't been pushed on recently — that's exactly what red-team cycles are for."$'\n\n'
         prompt+="In the changelog's **Who This Helps** section, name the stakeholder whose promise you tested and what regression this cycle now prevents."$'\n\n'
     fi
 
