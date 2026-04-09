@@ -52,8 +52,14 @@ cd your-project
 lathe init                # autonomous
 lathe init --interactive  # participate in stakeholder discovery
 
-# Verify alignment
+# Verify alignment — two ways, use both
 cat .lathe/alignment-summary.md
+# Then: ask your Claude Code agent (or any capable reviewer) to read the diff
+# of .lathe/ and confirm the stakeholders, tensions, and claims match the
+# project you actually have. Init writes a lot of files in one pass; a fresh
+# pair of eyes on the diff catches subtle mismatches (wrong stakeholder
+# priorities, claims that are documentation dressed as structure, bash bugs
+# in falsify.sh) that the summary alone can hide.
 
 # Run
 lathe start --cycles 10 --theme "harden edge cases"
@@ -64,7 +70,7 @@ lathe logs --follow
 
 Lathe is for **quick turning** — short, focused sessions that accomplish a specific milestone.
 
-- **Start with init.** Review `.lathe/alignment-summary.md` to verify the agent understood your stakeholders. If something is off, re-run with `--interactive`.
+- **Start with init, then review the diff.** Read `.lathe/alignment-summary.md` first — it's the 30-second briefing. Then have a capable reviewer (Claude Code in the target project works well) read the full diff of `.lathe/` and confirm the stakeholders, tensions, and claims match the project you actually have. The summary is curated; the diff is the whole story, and subtle issues (a claim that checks documentation instead of structure, a bash bug in `falsify.sh`, a stakeholder you wouldn't have named) surface faster in review than by running cycles and waiting for them to manifest. If something is off, re-run with `--interactive`.
 - **Run in short bursts.** A milestone usually takes 5–10 cycles. The lathe is most effective in its first ~10 cycles on a given focus area; after that it tends toward diminishing returns.
 - **Use themes for direction.** A theme biases the pick step without overriding stakeholder priorities.
 - **Re-init after milestones.** Once a phase of work is done (core implementation, test hardening, API stabilization), re-run `lathe init`. Stakeholders do not change, but what they need from the project does. Re-init wipes everything in `.lathe/` except `refs/` and starts fresh — the new agent should not be constrained by the old one's decisions.
@@ -96,10 +102,10 @@ bin/lathe                  — CLI entrypoint (init, start, stop, status, logs)
 engine/loop.sh             — Cycle engine: snapshot, prompt assembly, CI wait, safety net, auto-merge
 templates/
   meta-prompt.md           — Instructions for the init agent (the most important file in the project)
+  values-manifesto.md      — The values manifesto, spliced into the meta-prompt so the init agent reads the *why* before the *how*
   interactive-preamble.md  — Behavior injected when --interactive is used
   generic|go|rust/
     snapshot.sh            — State collection per project type
-    priority-stack.md      — Priority layers per project type
   skill/SKILL.md           — Global Claude Code skill installed to ~/.claude/skills/lathe/
 ```
 
@@ -112,7 +118,7 @@ There are exactly two categories of state under `.lathe/`:
 **Config** — written by `lathe init`, survives stop, committed by the user:
 
 ```
-.lathe/agent.md              — Behavioral instructions, stakeholder map, priorities
+.lathe/agent.md              — Behavioral instructions, stakeholder map, tensions, ranking guidance
 .lathe/alignment-summary.md  — Plain-English summary for the user
 .lathe/snapshot.sh           — Project state collection script
 .lathe/claims.md             — Registry of load-bearing promises, per stakeholder
@@ -180,7 +186,7 @@ The snapshot is fed directly into the LLM prompt, which makes everything fetched
 
 ## Supported Project Types
 
-Go, Rust, Python, Node, and Kubernetes are auto-detected. Any project works with the generic template. The difference is the `snapshot.sh` and `priority-stack.md` — Go projects get build/test/vet/coverage collection, Rust gets `cargo build/test/clippy`, generic projects get file structure and git state.
+Go, Rust, Python, Node, and Kubernetes are auto-detected. Any project works with the generic template. The difference is `snapshot.sh` — Go projects get build/test/vet/coverage collection, Rust gets `cargo build/test/clippy`, generic projects get file structure and git state.
 
 ## License
 

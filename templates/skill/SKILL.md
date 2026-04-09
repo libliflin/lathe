@@ -16,8 +16,9 @@ If your project has a `.lathe/` directory, lathe has been initialized on it. Her
 ```
 .lathe/
   agent.md              — The runtime agent's instructions. Contains stakeholder map,
-                          priority stack, tensions, rules. This is the "brain" of the
-                          autonomous loop. READ THIS to understand what lathe is optimizing for.
+                          tensions, rules, and how the agent ranks per-cycle work.
+                          This is the "brain" of the autonomous loop. READ THIS to
+                          understand what lathe is optimizing for.
   skills/*.md           — Project-specific knowledge lathe uses each cycle (testing
                           conventions, architecture, build process).
   refs/*.md             — External reference material the agent reads each cycle
@@ -60,7 +61,7 @@ When asked to evaluate what lathe has done:
 
 If you're evaluating lathe as a tool (not just its output on your project):
 
-- **Is the agent.md good?** Does it identify real stakeholders? Are the tensions genuine? Does the priority stack make sense for this project?
+- **Is the agent.md good?** Does it identify real stakeholders? Are the tensions genuine? Does the falsification suite cover the load-bearing claims, so the agent has a real floor instead of a frozen layer ladder?
 - **Are cycles delivering value?** Each cycle should make one person's experience noticeably better. If cycles feel like busywork, the agent.md probably needs work.
 - **Is the snapshot useful?** Does snapshot.sh capture what the agent actually needs to make good decisions?
 - **Are refs helping?** If the project needs external reference material, is it in `.lathe/refs/` and is the agent using it effectively?

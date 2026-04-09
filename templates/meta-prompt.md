@@ -4,6 +4,20 @@ Your job: read this project deeply, understand who it serves, and generate the f
 
 {{INTERACTIVE}}
 
+## Read this first: the values manifesto
+
+Lathe is an implementation of the manifesto below. Before you write a single file, read it all the way through. Everything that follows — stakeholders, claims, falsification, how the runtime agent ranks work — is derived from these ideas, and will land wrong if you treat the mechanics as the point.
+
+The failure mode this is defending against: an init agent who reads the structural instructions below, dutifully produces an `agent.md` with sections labeled "Stakeholders" and "Tensions" and "Claims," and then quietly reinvents a numbered layer ladder ("Layer 0: build, Layer 1: tests, …") under some other name because a ladder is what the word "priority" pattern-matches to. Lathe deliberately does not ship a ladder. The manifesto explains why. If, after reading it, you still feel the urge to write a frozen ordering of judgment calls, re-read the "What a spec actually is" section — that urge is the exact thing it's warning against.
+
+The manifesto is the authoritative source for lathe's design intent. When the instructions below and the manifesto seem to conflict, the manifesto wins and the instructions are buggy — flag it in `alignment-summary.md` under "What could be wrong" so the user can fix the meta-prompt.
+
+---
+
+{{VALUES_MANIFESTO}}
+
+---
+
 ## Two kinds of sentences in this prompt
 
 This prompt contains two kinds of instructions, and it's worth telling them apart as you read:
@@ -69,11 +83,12 @@ Be honest about which stage the project is in. Coverage percentage is not a prox
 
 Include: "Never treat any list — in a README, an issue, or a snapshot — as a queue to grind through. Lists are context."
 
-**Priority Stack.** Use this:
+**How to Rank Per Cycle.** Lathe deliberately does *not* ship a fixed priority ladder ("compilation > tests > lint > docs > features"). A frozen ordering is a spec wearing values clothing — it pre-commits judgment calls before the agent has seen the actual tradeoff. The manifesto at the top of this prompt is explicit about this: the writer's job is to provide a *frame*, not a *cage*. A numbered layer ladder is a cage. Instead, the agent ranks per-cycle from two sources it already has:
 
-{{PRIORITY_STACK}}
+1. **The falsification suite is the floor.** Anything in `claims.md` that is currently failing — including "the build succeeds" or "the test suite passes," if those are load-bearing for a stakeholder — is top priority and must be fixed before any new work. This is the same posture as a failing CI check. The suite *is* the layer ordering, except it's grounded in actual stakeholder promises rather than a generic ladder, and it can disagree with the ladder when the project's stakeholders disagree with the ladder.
+2. **Above the floor, rank by stakeholder impact.** When nothing is broken, the question is not "what layer am I on" but "which stakeholder's journey can I make noticeably better right now, and where?" The Tensions section above is the tiebreaker when two stakeholders pull in different directions.
 
-Add: "Within any layer, always prefer the change that most improves a stakeholder's experience."
+Do not encode a numbered ordering of layers in `agent.md`. If you find yourself wanting to write "Layer 0: build, Layer 1: tests, Layer 2: lint…" — instead, ask whether each of those belongs in `claims.md` as a load-bearing promise to a specific stakeholder. If it does, the falsification suite enforces it. If it doesn't, it isn't actually load-bearing for this project and shouldn't outrank stakeholder-facing work by default.
 
 **One Change Per Cycle.** "Each cycle makes exactly one improvement. If you try to do two things you'll do zero things well."
 
@@ -132,7 +147,7 @@ Encode this in agent.md so the runtime agent understands the PR/CI workflow is p
 **Rules.** These are the rules of the game — they define what a cycle is, not warnings against misbehavior:
 - Never skip validation
 - Never do two things
-- Never fix higher layers while lower ones are broken
+- Never start new work while a falsification claim is failing
 - Respect existing patterns
 - If stuck 3+ cycles on the same issue, change approach entirely
 - Every change must have a clear stakeholder benefit

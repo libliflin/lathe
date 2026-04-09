@@ -37,11 +37,11 @@ The cycle: wait for CI → snapshot (including CI results) → prompt assembly �
 - `templates/meta-prompt.md` — instructions for the init agent (the most important file in the project)
 - `templates/interactive-preamble.md` — additional instructions injected when `--interactive` is used
 - `templates/*/snapshot.sh` — default state collection scripts
-- `templates/*/priority-stack.md` — layer ordering injected into meta-prompt
+- `templates/*/snapshot.sh` — state collection scripts copied into `.lathe/` at init
 
 ## Key Principle
 
-**The meta-prompt is the whole game.** It determines what init discovers, which determines what the runtime agent knows, which determines whether cycles create value. If you want the lathe to do something better, the change almost always belongs in `meta-prompt.md`.
+**The meta-prompt is the whole game.** It determines what init discovers, which determines what the runtime agent knows, which determines whether cycles create value. If you want the lathe to do something better, the change almost always belongs in `meta-prompt.md` — or, when the change is about design *intent* rather than mechanics, in `values-manifesto.md`, which the meta-prompt splices in at the top so the init agent reads the *why* before the *how*.
 
 ## File Map
 
@@ -50,16 +50,14 @@ bin/lathe                        — CLI entrypoint (init, start, stop, status, 
 engine/loop.sh                   — Cycle engine (snapshot, prompt assembly, commit, retro)
 templates/
   meta-prompt.md                 — Instructions for the init agent
+  values-manifesto.md            — The values manifesto, injected into meta-prompt via {{VALUES_MANIFESTO}}. Authoritative source for lathe's design intent; the init agent reads it before the structural rules.
   interactive-preamble.md        — Interactive mode behavior (injected via {{INTERACTIVE}})
   generic/
     snapshot.sh                  — Generic state collection
-    priority-stack.md            — Generic priority layers
   go/
     snapshot.sh                  — Go-specific state collection (build, test, vet, coverage)
-    priority-stack.md            — Go-specific priority layers
   rust/
     snapshot.sh                  — Rust-specific state collection (cargo build, test, clippy)
-    priority-stack.md            — Rust-specific priority layers
   skill/
     SKILL.md                     — Global Claude Code skill, installed to ~/.claude/skills/lathe/ on init
 ```

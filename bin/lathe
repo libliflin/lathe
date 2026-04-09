@@ -105,15 +105,7 @@ detect_type() {
 
 generate_agent() {
     local tool="$1"
-    local project_type="$2"
-    local interactive="${3:-false}"
-
-    local priority_stack=""
-    if [[ -f "$LATHE_HOME/templates/$project_type/priority-stack.md" ]]; then
-        priority_stack=$(cat "$LATHE_HOME/templates/$project_type/priority-stack.md")
-    elif [[ -f "$LATHE_HOME/templates/generic/priority-stack.md" ]]; then
-        priority_stack=$(cat "$LATHE_HOME/templates/generic/priority-stack.md")
-    fi
+    local interactive="${2:-false}"
 
     local interactive_block=""
     if [[ "$interactive" == "true" ]]; then
@@ -125,13 +117,12 @@ generate_agent() {
     tmp_prompt=$(mktemp)
 
     python3 -c "
-import sys
 tpl = open('$LATHE_HOME/templates/meta-prompt.md').read()
-stack = sys.stdin.read()
-tpl = tpl.replace('{{PRIORITY_STACK}}', stack)
+manifesto = open('$LATHE_HOME/templates/values-manifesto.md').read()
+tpl = tpl.replace('{{VALUES_MANIFESTO}}', manifesto)
 tpl = tpl.replace('{{INTERACTIVE}}', '''$interactive_block''')
 print(tpl)
-" <<< "$priority_stack" > "$tmp_prompt"
+" > "$tmp_prompt"
 
     # Call AI — let it read the project and write .lathe/agent.md directly.
     # Interactive mode shows the agent live; autonomous mode is silent for
@@ -222,7 +213,7 @@ cmd_init() {
     # Generate agent.md and skills via AI. generate_agent shows a spinner
     # in autonomous mode; interactive mode prints its own preamble.
     local gen_exit=0
-    generate_agent "$tool" "$project_type" "$interactive" || gen_exit=$?
+    generate_agent "$tool" "$interactive" || gen_exit=$?
 
     if [[ "$gen_exit" -ne 0 ]]; then
         echo ""
