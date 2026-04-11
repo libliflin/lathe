@@ -2,11 +2,14 @@ package main
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 )
 
-// runCycle executes one full cycle: goal-setter → 4×(builder + verifier).
-// Each step follows identical plumbing: branch → snapshot → agent → safety → PR → CI → merge.
+// runCycle executes one full cycle: goal-setter → adaptive builder/verifier rounds.
+// The verifier decides when the goal is met (VERDICT: PASS). roundsPerCycle is the safety cap.
 func runCycle(cycle int, tool string) error {
 	fmt.Println()
 	fmt.Println("═══════════════════════════════════════════════")
@@ -37,10 +40,39 @@ func runCycle(cycle int, tool string) error {
 		}); err != nil {
 			return err
 		}
+
+		// Check verifier's verdict
+		verdict := readVerdict()
+		if verdict == "PASS" {
+			log("Verifier passed on round %d. Moving to next goal.", round)
+			break
+		}
+		if round < roundsPerCycle {
+			log("Verifier says NEEDS_WORK. Looping builder (round %d/%d) ...", round+1, roundsPerCycle)
+		} else {
+			log("Max rounds reached (%d). Moving to next goal.", roundsPerCycle)
+		}
 	}
 
 	setCycle(cycle, "complete")
 	return nil
+}
+
+// readVerdict reads the verifier's changelog and extracts the verdict.
+// Returns "PASS", "NEEDS_WORK", or "" if no verdict found.
+func readVerdict() string {
+	data, err := os.ReadFile(filepath.Join(latheSession, "changelog.md"))
+	if err != nil {
+		return ""
+	}
+	content := string(data)
+	if strings.Contains(content, "VERDICT: PASS") {
+		return "PASS"
+	}
+	if strings.Contains(content, "VERDICT: NEEDS_WORK") {
+		return "NEEDS_WORK"
+	}
+	return ""
 }
 
 // runStep is the shared plumbing for every step in a cycle.

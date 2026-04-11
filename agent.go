@@ -88,6 +88,17 @@ func runBuilder(cycle, round int, tool string) error {
 	}
 	b.WriteString("\n\n")
 
+	// Verifier feedback from previous round (if any)
+	if round > 1 {
+		changelogFile := filepath.Join(latheSession, "changelog.md")
+		if feedback, err := os.ReadFile(changelogFile); err == nil {
+			b.WriteString("---\n# Verifier Feedback (previous round)\n\n")
+			b.WriteString("The verifier reviewed the last round and found issues. Address them:\n\n")
+			b.Write(feedback)
+			b.WriteString("\n\n")
+		}
+	}
+
 	// Instructions
 	b.WriteString("---\n# Your Task\n\n")
 	b.WriteString("Implement the goal above. One change, committed, validated, pushed.\n")
@@ -136,6 +147,9 @@ func runVerifier(cycle, round int, tool string) error {
 	b.WriteString("If you find gaps, fix them — commit real code (tests, edge cases, error handling).\n")
 	b.WriteString("If the builder's change is solid, say so in the changelog.\n\n")
 	b.WriteString("**Changelog:** Write a brief changelog to `.lathe/session/changelog.md` describing what you verified and any fixes you applied.\n\n")
+	b.WriteString("**IMPORTANT — Verdict:** At the end of your changelog, write exactly one of these lines:\n")
+	b.WriteString("- `VERDICT: PASS` — the goal is met, tests pass, work is solid. Move to the next goal.\n")
+	b.WriteString("- `VERDICT: NEEDS_WORK` — there are issues the builder must address. Explain what's wrong above the verdict so the builder knows what to fix next round.\n\n")
 
 	return invokeAgent(b.String(), cycle, fmt.Sprintf("verify-%d", round), tool)
 }
