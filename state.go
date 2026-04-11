@@ -210,12 +210,22 @@ func discoverPR() error {
 func teardownSession() {
 	s, _ := readSession()
 
-	// Clean working tree
-	_ = runSilent("git", "checkout", "--", ".")
+	// Determine which branch to return to
+	base := s.BaseBranch
+	if base == "" {
+		base = "main"
+	}
+
+	// Clean working tree — reset hard to avoid checkout conflicts
+	_ = runSilent("git", "reset", "--hard")
 	_ = runSilent("git", "clean", "-fd")
 
-	if s.BaseBranch != "" {
-		_ = runSilent("git", "checkout", s.BaseBranch)
+	// Return to base branch
+	if err := runSilent("git", "checkout", base); err != nil {
+		// Fallback: try main, then master
+		if runSilent("git", "checkout", "main") != nil {
+			_ = runSilent("git", "checkout", "master")
+		}
 	}
 
 	// Close PR and delete remote branch
@@ -223,7 +233,7 @@ func teardownSession() {
 		_ = runSilent("gh", "pr", "close", s.PRNumber, "--delete-branch")
 	}
 
-	// Delete local branch
+	// Delete local lathe branches
 	if s.Mode == "branch" && s.Branch != "" {
 		_ = runSilent("git", "branch", "-D", s.Branch)
 	}
