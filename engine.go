@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -161,10 +162,30 @@ func engineRun(args []string) {
 
 	log("Background process started (PID %d). Tool: %s", os.Getpid(), tool)
 
+	// Trap SIGTERM/SIGINT for graceful shutdown.
+	// When lathe stop sends SIGTERM, we finish the current cycle, teardown, and exit.
+	stopping := make(chan os.Signal, 1)
+	signal.Notify(stopping, syscall.SIGTERM, syscall.SIGINT)
+
+	// Always teardown on exit — whether normal completion, signal, or error
+	defer func() {
+		log("Cleaning up ...")
+		teardownSession()
+		log("Done.")
+	}()
+
 	cycle := getCycle()
 	cyclesRun := 0
 
 	for {
+		// Check for stop signal before starting next cycle
+		select {
+		case sig := <-stopping:
+			log("Received %s. Stopping after current cycle.", sig)
+			return
+		default:
+		}
+
 		if err := runCycle(cycle, tool); err != nil {
 			log("Cycle %d error: %v", cycle, err)
 		}
