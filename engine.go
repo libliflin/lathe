@@ -115,9 +115,7 @@ func engineStart(args []string) {
 	cmd.Process.Release()
 
 	fmt.Println()
-	fmt.Println("  ╔═══════════════════════════════════════════╗")
-	fmt.Printf("  ║  LATHE — turning %s\n", projectName)
-	fmt.Println("  ╚═══════════════════════════════════════════╝")
+	fmt.Printf("  LATHE — turning %s\n", projectName)
 	fmt.Println()
 	fmt.Printf("  Started (PID %d). Tool: %s, Mode: %s\n", pid, tool, mode)
 	if mode == "branch" {

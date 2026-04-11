@@ -65,25 +65,42 @@ func generateAgentRole(role, tool string, interactive bool) error {
 
 	logFile := filepath.Join(latheDir, "init-"+role+".log")
 
-	switch tool {
-	case "claude":
-		if interactive {
+	runAgent := func() (int, error) {
+		switch tool {
+		case "claude":
+			return runPipeQuiet(prompt, logFile, "claude", "-p", "--allowedTools", "Read,Write,Edit,Glob,Grep")
+		case "amp":
+			return runPipeQuiet(prompt, logFile, "amp", "--dangerously-allow-all")
+		default:
+			return 1, fmt.Errorf("unknown tool: %s", tool)
+		}
+	}
+
+	if interactive {
+		switch tool {
+		case "claude":
 			return run("claude", prompt, "--allowedTools", "Read,Write,Edit,Glob,Grep")
-		}
-		stop := spinner(role)
-		_, err := runPipeQuiet(prompt, logFile, "claude", "-p", "--allowedTools", "Read,Write,Edit,Glob,Grep")
-		stop()
-		return err
-	case "amp":
-		if interactive {
+		case "amp":
 			return run("amp", "--dangerously-allow-all")
+		default:
+			return fmt.Errorf("unknown tool: %s", tool)
 		}
+	}
+
+	for {
 		stop := spinner(role)
-		_, err := runPipeQuiet(prompt, logFile, "amp", "--dangerously-allow-all")
+		_, err := runAgent()
 		stop()
+
+		// Check for rate limit in output
+		if data, readErr := os.ReadFile(logFile); readErr == nil {
+			if strings.Contains(string(data), "You've hit your limit") {
+				sleepUntilRateLimitLifts()
+				continue // retry this role
+			}
+		}
+
 		return err
-	default:
-		return fmt.Errorf("unknown tool: %s", tool)
 	}
 }
 
@@ -203,9 +220,7 @@ func cmdInit(args []string) {
 		}
 	} else {
 		fmt.Println()
-		fmt.Println("  ╔═══════════════════════════════════════════╗")
-		fmt.Println("  ║  LATHE — initializing project              ║")
-		fmt.Println("  ╚═══════════════════════════════════════════╝")
+		fmt.Println("  LATHE — initializing project")
 	}
 	fmt.Println()
 
