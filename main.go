@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"time"
@@ -30,9 +31,13 @@ func initPaths() {
 	sessionFile = filepath.Join(latheSession, "session.json")
 }
 
+// logWriter is where log() writes. Defaults to stderr, but engineStart
+// sets it to a MultiWriter so output also goes to stream.log.
+var logWriter io.Writer = os.Stderr
+
 func log(format string, args ...any) {
 	t := time.Now().Format("15:04:05")
-	fmt.Fprintf(os.Stderr, "  [lathe] %s %s\n", t, fmt.Sprintf(format, args...))
+	fmt.Fprintf(logWriter, "  [lathe] %s %s\n", t, fmt.Sprintf(format, args...))
 }
 
 func die(format string, args ...any) {
@@ -54,6 +59,10 @@ func main() {
 	case "start":
 		ensureInitialized()
 		engineStart(os.Args[2:])
+	case "_run":
+		// Hidden command: background process entry point (called by start)
+		ensureInitialized()
+		engineRun(os.Args[2:])
 	case "stop":
 		ensureInitialized()
 		engineStop()

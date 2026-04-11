@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -11,11 +12,9 @@ import (
 	"time"
 )
 
-func engineStart(args []string) {
-	maxCycles := 0
-	tool := "claude"
-	theme := ""
-	mode := "branch"
+func parseStartArgs(args []string) (maxCycles int, tool, theme, mode string) {
+	tool = "claude"
+	mode = "branch"
 
 	// Project-level mode override
 	if data, err := os.ReadFile(filepath.Join(latheDir, "mode")); err == nil {
@@ -48,6 +47,11 @@ func engineStart(args []string) {
 			die("Unknown option: %s", args[i])
 		}
 	}
+	return
+}
+
+func engineStart(args []string) {
+	maxCycles, tool, theme, mode := parseStartArgs(args)
 
 	if isRunning() {
 		data, _ := os.ReadFile(pidFile)
@@ -74,29 +78,48 @@ func engineStart(args []string) {
 		projectName = filepath.Base(cwd)
 	}
 
+	// Re-exec ourselves as a background process with the hidden _run command
+	exe, err := os.Executable()
+	if err != nil {
+		die("cannot resolve executable: %v", err)
+	}
+
+	streamLogPath := filepath.Join(latheSession, "logs", "stream.log")
+	logF, err := os.Create(streamLogPath)
+	if err != nil {
+		die("create stream log: %v", err)
+	}
+
+	// Build _run args: pass through everything the background process needs
+	runArgs := []string{"_run", "--tool", tool, "--mode", mode}
+	if maxCycles > 0 {
+		runArgs = append(runArgs, "--cycles", strconv.Itoa(maxCycles))
+	}
+
+	cmd := exec.Command(exe, runArgs...)
+	cmd.Dir, _ = os.Getwd()
+	cmd.Stdout = logF
+	cmd.Stderr = logF
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+
+	if err := cmd.Start(); err != nil {
+		logF.Close()
+		die("start background process: %v", err)
+	}
+
+	pid := cmd.Process.Pid
+	os.WriteFile(pidFile, []byte(strconv.Itoa(pid)), 0644)
+	logF.Close()
+
+	// Detach — the child runs independently
+	cmd.Process.Release()
+
 	fmt.Println()
 	fmt.Println("  ╔═══════════════════════════════════════════╗")
 	fmt.Printf("  ║  LATHE — turning %s\n", projectName)
 	fmt.Println("  ╚═══════════════════════════════════════════╝")
 	fmt.Println()
-
-	// Fork the cycle loop into a background goroutine, write PID
-	// For now, run in foreground (the bash version used a subshell &).
-	// Go doesn't fork — we run in-process and write our own PID.
-	os.WriteFile(pidFile, []byte(strconv.Itoa(os.Getpid())), 0644)
-
-	// Redirect log output to stream log
-	logFile := filepath.Join(latheSession, "logs", "stream.log")
-	f, err := os.Create(logFile)
-	if err != nil {
-		die("create stream log: %v", err)
-	}
-	defer f.Close()
-	// Log to both stderr and file
-	origStderr := os.Stderr
-	_ = origStderr // keep for future use
-
-	fmt.Printf("  Started (PID %d). Tool: %s, Mode: %s\n", os.Getpid(), tool, mode)
+	fmt.Printf("  Started (PID %d). Tool: %s, Mode: %s\n", pid, tool, mode)
 	if mode == "branch" {
 		s, _ := readSession()
 		fmt.Printf("  Branch:  %s\n", s.Branch)
@@ -105,8 +128,41 @@ func engineStart(args []string) {
 	fmt.Println("  Logs:    lathe logs --follow")
 	fmt.Println("  Status:  lathe status")
 	fmt.Println("  Stop:    lathe stop")
+}
 
-	// Run the cycle loop
+// engineRun is the background entry point — called via the hidden `_run` command.
+func engineRun(args []string) {
+	tool := "claude"
+	mode := "branch"
+	maxCycles := 0
+
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--tool":
+			i++
+			if i < len(args) {
+				tool = args[i]
+			}
+		case "--mode":
+			i++
+			if i < len(args) {
+				mode = args[i]
+			}
+		case "--cycles":
+			i++
+			if i < len(args) {
+				maxCycles, _ = strconv.Atoi(args[i])
+			}
+		}
+	}
+
+	_ = mode // used by session state already written
+
+	// stdout/stderr are already pointed at stream.log by the parent
+	logWriter = os.Stderr
+
+	log("Background process started (PID %d). Tool: %s", os.Getpid(), tool)
+
 	cycle := getCycle()
 	cyclesRun := 0
 
