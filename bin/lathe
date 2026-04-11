@@ -79,7 +79,7 @@ spinner_stop() {
 
 ensure_initialized() {
     [[ -d "$LATHE_DIR" ]] || die "Not a lathe project. Run 'lathe init' first."
-    [[ -f "$LATHE_DIR/agent.md" ]] || die "Missing $LATHE_DIR/agent.md. Run 'lathe init' first."
+    [[ -f "$LATHE_DIR/goal.md" ]] || die "Missing $LATHE_DIR/goal.md. Run 'lathe init' first."
     [[ -f "$LATHE_DIR/snapshot.sh" ]] || die "Missing $LATHE_DIR/snapshot.sh. Run 'lathe init' first."
 }
 
@@ -103,9 +103,13 @@ detect_type() {
     fi
 }
 
-generate_agent() {
-    local tool="$1"
-    local interactive="${2:-false}"
+generate_agent_role() {
+    local role="$1"          # goal, builder, verifier
+    local tool="$2"
+    local interactive="${3:-false}"
+    local meta_template="$LATHE_HOME/templates/meta-${role}.md"
+
+    [[ -f "$meta_template" ]] || die "No meta-prompt for role: $role"
 
     local interactive_block=""
     if [[ "$interactive" == "true" ]]; then
@@ -117,23 +121,23 @@ generate_agent() {
     tmp_prompt=$(mktemp)
 
     python3 -c "
-tpl = open('$LATHE_HOME/templates/meta-prompt.md').read()
-manifesto = open('$LATHE_HOME/templates/values-manifesto.md').read()
-tpl = tpl.replace('{{VALUES_MANIFESTO}}', manifesto)
+tpl = open('$meta_template').read()
+import os
+manifesto_path = '$LATHE_HOME/templates/values-manifesto.md'
+if os.path.exists(manifesto_path):
+    manifesto = open(manifesto_path).read()
+    tpl = tpl.replace('{{VALUES_MANIFESTO}}', manifesto)
 tpl = tpl.replace('{{INTERACTIVE}}', '''$interactive_block''')
 print(tpl)
 " > "$tmp_prompt"
 
-    # Call AI — let it read the project and write .lathe/agent.md directly.
-    # Interactive mode shows the agent live; autonomous mode is silent for
-    # 5–10 minutes, so capture output to a log and show a spinner instead.
     local rc=0
-    local log="$LATHE_DIR/init.log"
+    local log="$LATHE_DIR/init-${role}.log"
     if [[ "$tool" == "claude" ]]; then
         if [[ "$interactive" == "true" ]]; then
             claude "$(cat "$tmp_prompt")" --allowedTools "Read,Write,Edit,Glob,Grep" || rc=$?
         else
-            spinner_start "Analyzing project and generating agent"
+            spinner_start "Generating $role agent"
             claude -p "$(cat "$tmp_prompt")" --allowedTools "Read,Write,Edit,Glob,Grep" \
                 > "$log" 2>&1 || rc=$?
             spinner_stop
@@ -142,7 +146,7 @@ print(tpl)
         if [[ "$interactive" == "true" ]]; then
             amp --dangerously-allow-all < "$tmp_prompt" || rc=$?
         else
-            spinner_start "Analyzing project and generating agent"
+            spinner_start "Generating $role agent"
             amp --dangerously-allow-all < "$tmp_prompt" > "$log" 2>&1 || rc=$?
             spinner_stop
         fi
@@ -158,15 +162,25 @@ cmd_init() {
     local project_type=""
     local tool="claude"
     local interactive=false
+    local target_agent=""   # empty = all three
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --type)        project_type="$2"; shift 2 ;;
             --tool)        tool="$2"; shift 2 ;;
             --interactive) interactive=true; shift ;;
+            --agent)       target_agent="$2"; shift 2 ;;
             *)             die "Unknown option: $1" ;;
         esac
     done
+
+    # Validate --agent value
+    if [[ -n "$target_agent" ]]; then
+        case "$target_agent" in
+            goal|builder|verifier) ;;
+            *) die "Unknown agent role: $target_agent (expected: goal, builder, verifier)" ;;
+        esac
+    fi
 
     if [[ -z "$project_type" ]]; then
         project_type=$(detect_type)
@@ -182,13 +196,34 @@ cmd_init() {
 
     [[ -d "$template_dir" ]] || die "Template directory not found: $template_dir"
 
+    # Targeted re-init: only regenerate one agent role
+    if [[ -n "$target_agent" ]]; then
+        [[ -d "$LATHE_DIR" ]] || die ".lathe/ not found — run 'lathe init' first (without --agent)"
+        echo "  Re-initializing $target_agent agent only."
+        echo ""
+
+        local gen_exit=0
+        generate_agent_role "$target_agent" "$tool" "$interactive" || gen_exit=$?
+        if [[ "$gen_exit" -ne 0 ]]; then
+            echo ""
+            echo "  ERROR: $target_agent agent generation failed (exit $gen_exit)."
+            exit 1
+        fi
+
+        echo "  Updated: $LATHE_DIR/${target_agent}.md"
+        echo ""
+        echo "  Note: downstream agents may need re-init too."
+        echo "  (goal → builder → verifier)"
+        return 0
+    fi
+
+    # Full init — all three agents
     local reinit=false
     if [[ -d "$LATHE_DIR" ]]; then
         reinit=true
         echo "  Re-initializing (preserving refs/)."
 
-        # Wipe everything except refs/ — config gets regenerated,
-        # session/history/decisions are session-scoped and stale.
+        # Wipe everything except refs/
         for item in "$LATHE_DIR"/* "$LATHE_DIR"/.*; do
             local base
             base=$(basename "$item")
@@ -210,59 +245,47 @@ cmd_init() {
     cp "$template_dir/snapshot.sh" "$LATHE_DIR/snapshot.sh"
     chmod +x "$LATHE_DIR/snapshot.sh"
 
-    # Generate agent.md and skills via AI. generate_agent shows a spinner
-    # in autonomous mode; interactive mode prints its own preamble.
-    local gen_exit=0
-    generate_agent "$tool" "$interactive" || gen_exit=$?
+    # Generate three agent roles in sequence.
+    # Each reads the previous role's output for alignment.
+    local roles=("goal" "builder" "verifier")
+    for role in "${roles[@]}"; do
+        local gen_exit=0
+        generate_agent_role "$role" "$tool" "$interactive" || gen_exit=$?
 
-    if [[ "$gen_exit" -ne 0 ]]; then
-        echo ""
-        echo "  ERROR: Agent generation failed (exit $gen_exit)."
-        echo "  The AI could not analyze this project. Check that '$tool' is installed and working."
-        if [[ -s "$LATHE_DIR/init.log" ]]; then
+        if [[ "$gen_exit" -ne 0 ]]; then
             echo ""
-            echo "  --- last 20 lines of $LATHE_DIR/init.log ---"
-            tail -n 20 "$LATHE_DIR/init.log" | sed 's/^/  /'
-            echo "  --- end ---"
+            echo "  ERROR: $role agent generation failed (exit $gen_exit)."
+            echo "  Check that '$tool' is installed and working."
+            if [[ -s "$LATHE_DIR/init-${role}.log" ]]; then
+                echo ""
+                echo "  --- last 20 lines of $LATHE_DIR/init-${role}.log ---"
+                tail -n 20 "$LATHE_DIR/init-${role}.log" | sed 's/^/  /'
+                echo "  --- end ---"
+            fi
+            echo ""
+            echo "  You can retry with: lathe init --tool $tool"
+            echo "  Or retry just this role: lathe init --agent $role"
+            $reinit || rm -rf "$LATHE_DIR"
+            exit 1
         fi
-        echo ""
-        echo "  You can retry with: lathe init --tool $tool"
-        echo "  If this persists, please report it: https://github.com/libliflin/lathe/issues"
-        $reinit || rm -rf "$LATHE_DIR"
-        exit 1
-    fi
+    done
 
-    if [[ ! -s "$LATHE_DIR/agent.md" ]] || ! grep -q "Lathe" "$LATHE_DIR/agent.md"; then
+    # Validate goal.md exists (the primary output)
+    if [[ ! -s "$LATHE_DIR/goal.md" ]]; then
         echo ""
         echo "  ERROR: Agent generation produced unusable output."
-        echo "  The AI ran but didn't produce a valid agent.md."
+        echo "  The AI ran but didn't produce a valid goal.md."
         echo "  You can retry with: lathe init --tool $tool"
-        echo ""
-        echo "  If this persists, please report it: https://github.com/libliflin/lathe/issues"
         $reinit || rm -rf "$LATHE_DIR"
         exit 1
     fi
 
-    echo "  Agent generated via $tool."
+    echo "  Agents generated via $tool."
 
-    # Safety net: the meta-prompt instructs the init agent to chmod +x falsify.sh,
-    # but agents sometimes forget. Without the executable bit, the engine silently
-    # skips the falsification suite (engine/loop.sh checks `[[ -x ... ]]`).
-    if [[ -f "$LATHE_DIR/falsify.sh" && ! -x "$LATHE_DIR/falsify.sh" ]]; then
-        chmod +x "$LATHE_DIR/falsify.sh"
-    fi
-
-    # Ensure .lathe/session/ is gitignored (all ephemeral engine state)
-    # Clean up old-style granular entries from previous versions.
-    # Portable in-place edit (BSD sed needs `-i ''`, GNU sed on Linux/Git Bash
-    # treats `''` as a filename) — use a temp file and move it back.
+    # Ensure .lathe/session/ is gitignored
     if [[ -f .gitignore ]]; then
         local tmp_gitignore
         tmp_gitignore=$(mktemp) || tmp_gitignore=".gitignore.lathe.tmp.$$"
-        # Strip old-style entries first, then collapse runs of blank lines.
-        # Done as two passes because the blank-line collapse uses `N`, which
-        # would otherwise pull the next line into the pattern space and hide
-        # it from the deletion patterns.
         sed -e '/^\.lathe\/state/d' -e '/^# Lathe logs/d' .gitignore \
             | sed -e '/^$/N;/^\n$/d' > "$tmp_gitignore" \
             && mv "$tmp_gitignore" .gitignore
@@ -274,7 +297,7 @@ cmd_init() {
         echo ".lathe/session/" >> .gitignore
     fi
 
-    # Install global Claude Code skill (helps any Claude session understand lathe)
+    # Install global Claude Code skill
     local skill_dir="$HOME/.claude/skills/lathe"
     if [[ ! -f "$skill_dir/SKILL.md" ]] || ! diff -q "$LATHE_HOME/templates/skill/SKILL.md" "$skill_dir/SKILL.md" &>/dev/null; then
         mkdir -p "$skill_dir"
@@ -283,11 +306,13 @@ cmd_init() {
     fi
 
     if $reinit; then
-        echo "  Updated: agent.md, snapshot.sh, skills"
+        echo "  Updated: goal.md, builder.md, verifier.md, snapshot.sh, skills"
     else
         echo "  Created: $LATHE_DIR/"
     fi
-    echo "  Agent:   $LATHE_DIR/agent.md"
+    echo "  Goal:    $LATHE_DIR/goal.md"
+    echo "  Builder: $LATHE_DIR/builder.md"
+    echo "  Verify:  $LATHE_DIR/verifier.md"
     echo "  Skills:  $LATHE_DIR/skills/"
     echo "  Snap:    $LATHE_DIR/snapshot.sh"
     if [[ -f "$LATHE_DIR/alignment-summary.md" ]]; then
@@ -296,6 +321,7 @@ cmd_init() {
         echo "  cat $LATHE_DIR/alignment-summary.md"
         echo ""
         echo "  If something looks off, re-run with: lathe init --interactive"
+        echo "  Or target a specific role: lathe init --agent goal"
     fi
     echo ""
     echo "  Run 'lathe start' to begin."

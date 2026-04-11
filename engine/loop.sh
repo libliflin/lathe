@@ -5,10 +5,12 @@
 # Session state — ephemeral, gitignored, wiped on stop
 LATHE_SESSION="$LATHE_DIR/session"
 LATHE_HISTORY="$LATHE_SESSION/history"
+LATHE_GOAL_HISTORY="$LATHE_SESSION/goal-history"
 LATHE_SKILLS="$LATHE_DIR/skills"
 PID_FILE="$LATHE_SESSION/lathe.pid"
 SESSION_FILE="$LATHE_SESSION/session.json"
 CI_WAIT_TIMEOUT=300  # seconds to wait for CI (5 min — container pulls alone can take 1-2 min)
+ROUNDS_PER_CYCLE=4   # builder/verifier rounds per goal-setter cycle
 
 # In direct mode, the loop polls a single named check run on the latest
 # main HEAD commit. The default name is "build"; projects can override by
@@ -64,7 +66,7 @@ engine_start() {
 
     # Clean slate — wipe any stale session from a previous run or crashed stop
     rm -rf "$LATHE_SESSION"
-    mkdir -p "$LATHE_SESSION/logs" "$LATHE_SESSION/history"
+    mkdir -p "$LATHE_SESSION/logs" "$LATHE_SESSION/history" "$LATHE_SESSION/goal-history"
 
     # Persist theme so it survives across the background process boundary
     if [[ -n "$theme" ]]; then
@@ -103,35 +105,55 @@ engine_start() {
             echo "═══════════════════════════════════════════════"
             echo ""
 
+            # --- Goal Setter ---
             wait_for_rate_limit
-            set_cycle "$cycle" "running"
-
-            # If we're on base (post-merge or first cycle), create a work branch
+            set_cycle "$cycle" "goal"
+            log "Goal-setter phase ..."
             create_session_branch
-
-            # Phase 1: Snapshot + CI status + falsification suite
             collect_snapshot
             collect_ci_status
-            collect_falsification
-
-            # Phase 2: Agent implements one change
-            run_agent "$cycle" "$tool" || true
-
-            # Phase 3: Post-cycle cleanup
-            # Archive first so safety_net commits history along with stragglers
+            run_goal_setter "$cycle" "$tool" || true
             archive_cycle "$cycle"
             safety_net
             discover_pr
-
-            # Give GitHub time to register the latest push before polling CI
             sleep 30
-
-            # Phase 4: Wait for CI, merge if green
-            # This makes each cycle self-contained: do work, then land it.
-            # When the loop exits, the last cycle's work is already merged
-            # (if CI passed) — teardown only closes work that didn't pass.
             wait_for_ci
             auto_merge_if_green
+            archive_goal "$cycle"
+
+            # --- Builder/Verifier Rounds ---
+            local round
+            for (( round=1; round<=ROUNDS_PER_CYCLE; round++ )); do
+                # Builder
+                wait_for_rate_limit
+                set_cycle "$cycle" "round-${round}-build"
+                log "Builder round $round ..."
+                create_session_branch
+                collect_snapshot
+                collect_ci_status
+                run_builder "$cycle" "$round" "$tool" || true
+                archive_cycle "$cycle"
+                safety_net
+                discover_pr
+                sleep 30
+                wait_for_ci
+                auto_merge_if_green
+
+                # Verifier
+                wait_for_rate_limit
+                set_cycle "$cycle" "round-${round}-verify"
+                log "Verifier round $round ..."
+                create_session_branch
+                collect_snapshot
+                collect_ci_status
+                run_verifier "$cycle" "$round" "$tool" || true
+                archive_cycle "$cycle"
+                safety_net
+                discover_pr
+                sleep 30
+                wait_for_ci
+                auto_merge_if_green
+            done
 
             set_cycle "$cycle" "complete"
             cycle=$((cycle + 1))

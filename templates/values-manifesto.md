@@ -1,6 +1,6 @@
 # values
 
-*A manifesto on value-driven development, by William Laffin. Lathe's design derives from this document — read it before writing `agent.md`. Source: https://libliflin.github.io/values/*
+*A manifesto on value-driven development, by William Laffin. Lathe's design derives from this document — read it before writing agent docs. Source: https://libliflin.github.io/values/*
 
 ## The thesis
 
@@ -38,21 +38,11 @@ So a spec, by itself, doesn't carry the thing I actually need the agent to carry
 
 Each stakeholder has a first encounter with the project and some notion of what success looks like for them. They also have a reason they'd walk away. That last one is the one I most often forget to write down. If I can't name it, I'm not ready to ask an agent to act on her behalf.
 
-Personas aren't a new idea. What's different here is that the stakeholder prose isn't an introduction that precedes the real document. It *is* the document. There's no hidden spec behind it that the prose is summarizing. The stakeholders, the claims, and this week's theme are all the agent gets, and they have to be load-bearing on their own.
-
-**Claims.** The promises each stakeholder is relying on, written concretely enough that something can actively try to break them.
-
-Good claims look like: *stop always leaves the working tree on the base branch*. *Every public type in ir.rs has a cache_line field*. Something where I can write an adversarial test that asks whether the promise is still holding and get back a yes or a no. "The CLI should be reliable" fails that bar. It's a mood dressed up as a promise.
-
-The falsification loop is the load-bearing part. If you write claims down but nothing is periodically trying to break them, you don't have claims. You have sincerely-held beliefs, which is the category the original specs were in. A claim without that loop around it will drift the same way a spec drifts, for the same reason: nothing is keeping it honest.
-
-You might notice that the falsification suite is itself a kind of spec, a specification of the claims that must hold. That's true, and worth sitting with. The important difference is that it runs. A drifted test script fails loudly, which forces either a fix or a conscious decision to update the claim. A drifted human-facing spec is silent, and silence is the enemy here. The reason to prefer executable claims over written ones isn't that one is a spec and the other isn't. It's that one breaks loudly and the other lies quietly.
-
-I find I don't really know what I value until I try to write a test that would prove I've stopped valuing it.
+Personas aren't a new idea. What's different here is that the stakeholder prose isn't an introduction that precedes the real document. It *is* the document. There's no hidden spec behind it that the prose is summarizing. The stakeholders and this week's theme are all the agent gets, and they have to be load-bearing on their own.
 
 **Themes.** What I'm trying to accomplish this week. Priorities come from the stakeholders. A theme is narrower: it says *where*, inside those priorities, I'm going to spend today. *Get the CLI working end-to-end*. *Stop bleeding contributors on the onboarding path*. A theme biases attention. It answers the question: where, within everything that matters, should I be looking this afternoon?
 
-Between those three, there's usually enough context for the agent to figure out what to do next, and enough for it to notice when it was wrong about what to do next.
+Between those two, there's usually enough context for the agent to figure out what to do next, and enough for it to notice when it was wrong about what to do next.
 
 ## Judgment is the bet
 
@@ -60,7 +50,7 @@ The word I want is *judgment*. The ability to read a situation and pick a reason
 
 This is where spec-cage believers and I part ways, and I want to be honest about what I'm claiming. The claim is that the current generation of coding agents can exercise judgment on an existing, scoped project well enough that providing a *frame* beats providing a *cage*. That's an empirical claim about 2026, not a philosophical one about agents in principle. If you've been burned by older agents that needed spec cages to produce anything coherent, the burn was real, and caging them was the right call at the time. What I'm saying is that for this narrow job, pushing an existing project forward one day at a time, the cage now costs more than it saves.
 
-The cheapest way to check is to take the spec away from one of your agents, hand it the stakeholder prose, the claims, and a theme, and watch what happens for a week. That's how I figured it out. A week of honest trial will tell you whether the claim holds on your project.
+The cheapest way to check is to take the spec away from one of your agents, hand it the stakeholder prose and a theme, and watch what happens for a week. That's how I figured it out. A week of honest trial will tell you whether the claim holds on your project.
 
 If it does, the writer's job is to provide the frame the reader needs in order to decide well.
 
@@ -74,7 +64,7 @@ This is local gradient by design. The agent walks one project forward, one step 
 
 In practice, value-driven development is more rhythm than document.
 
-You start by reading the project hard enough to figure out who it actually serves and what you've promised them. You write that down as prose, not as a checklist. You work in small cycles, and each cycle the agent picks the one change that most improves some specific stakeholder's life, then writes down who benefited and how. Periodically it stops building and runs the adversarial pass: does every claim still hold? Did the last few cycles quietly break something? A claim that can't be broken on purpose is either load-bearing or decorative, and you want to know which before you ship.
+You start by reading the project hard enough to figure out who it actually serves and what you've promised them. You write that down as prose, not as a checklist. You work in small cycles, and each cycle the agent picks the one change that most improves some specific stakeholder's life, then writes down who benefited and how.
 
 The owner reads the git log and decides whether the tool is earning its keep. That's the feedback loop, and it lives outside the system, held by the human whose project it is. Nothing in this method tries to self-grade. The grading is the owner's job and stays that way.
 

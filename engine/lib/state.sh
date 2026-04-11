@@ -34,6 +34,16 @@ archive_cycle() {
     done
 }
 
+archive_goal() {
+    local cycle="$1"
+    mkdir -p "$LATHE_GOAL_HISTORY"
+    # Copy the goal-setter's changelog as the goal record for this cycle
+    if [[ -f "$LATHE_SESSION/changelog.md" ]]; then
+        cp "$LATHE_SESSION/changelog.md" \
+            "$LATHE_GOAL_HISTORY/cycle-$(printf '%03d' "$cycle").md"
+    fi
+}
+
 # ---------------------------------------------------------------------------
 # Session state — branch and PR tracking
 # ---------------------------------------------------------------------------

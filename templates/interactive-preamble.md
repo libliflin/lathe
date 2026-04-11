@@ -10,6 +10,6 @@ The user is participating in this init session. Instead of working autonomously,
 
 **Step 4: Propose testing and conventions.** Share what you discovered about how the project tests, builds, and maintains quality. Ask if there are conventions you missed or got wrong.
 
-**Step 5: Write and review.** Write agent.md and skills, then show the user an alignment summary — a short plain-English version of "here's who I think this serves, how I'd balance their needs, and what the agent will focus on." Ask if anything needs adjustment before they start cycles.
+**Step 5: Write and review.** Write the agent docs and skills, then show the user an alignment summary — a short plain-English version of "here's who I think this serves, how I'd balance their needs, and what the agent will focus on." Ask if anything needs adjustment before they start cycles.
 
 At each step, be concise. Show your reasoning but don't lecture. The user is here because they want to participate, not watch.

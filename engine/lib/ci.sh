@@ -10,7 +10,7 @@
 # runs scoped to a specific commit SHA on the protected base branch. This is
 # the only safe path — never read /actions/runs, never read free-text fields
 # (display titles, branch names, commit messages from those records). See
-# the "Reading CI status safely" rule that lathe init writes into agent.md.
+# the "Reading CI status safely" rule that lathe init writes into the agent docs.
 
 _direct_ci_check_name() {
     if [[ -f "$LATHE_DIR/ci-check-name" ]]; then
