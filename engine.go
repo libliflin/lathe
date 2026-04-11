@@ -100,7 +100,7 @@ func engineStart(args []string) {
 	cmd.Dir, _ = os.Getwd()
 	cmd.Stdout = logF
 	cmd.Stderr = logF
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	setDetach(cmd)
 
 	if err := cmd.Start(); err != nil {
 		logF.Close()
