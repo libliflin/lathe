@@ -210,23 +210,8 @@ func discoverPR() error {
 func teardownSession() {
 	s, _ := readSession()
 
-	// Determine which branch to return to
-	base := s.BaseBranch
-	if base == "" {
-		base = "main"
-	}
-
-	// Clean working tree — reset hard to avoid checkout conflicts
-	_ = runSilent("git", "reset", "--hard")
-	_ = runSilent("git", "clean", "-fd")
-
-	// Return to base branch
-	if err := runSilent("git", "checkout", base); err != nil {
-		// Fallback: try main, then master
-		if runSilent("git", "checkout", "main") != nil {
-			_ = runSilent("git", "checkout", "master")
-		}
-	}
+	// Return to base branch (reset, checkout, wait, pull)
+	returnToBase()
 
 	// Close PR and delete remote branch
 	if s.Mode == "branch" && s.PRNumber != "" {

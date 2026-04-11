@@ -153,32 +153,74 @@ func waitForCIDirect() {
 // autoMergeIfGreen merges the PR when CI passes and returns to base.
 func autoMergeIfGreen() {
 	if ciResult != "pass" {
+		returnToBase()
 		return
 	}
 
 	s, err := readSession()
 	if err != nil || s.Mode != "branch" || s.PRNumber == "" {
+		returnToBase()
 		return
 	}
 
 	log("CI passed. Merging PR #%s ...", s.PRNumber)
 	if err := runSilent("gh", "pr", "merge", s.PRNumber, "--squash", "--delete-branch"); err != nil {
 		log("WARN: merge failed: %v", err)
+		returnToBase()
 		return
 	}
 
-	// Return to base
-	_ = runSilent("git", "checkout", s.BaseBranch)
-	_ = runSilent("git", "pull", "--ff-only", "origin", s.BaseBranch)
-	_ = runSilent("git", "branch", "-D", s.Branch)
-
-	// Wait for GitHub propagation
-	time.Sleep(10 * time.Second)
+	oldBranch := s.Branch
 
 	// Clear branch and PR for next step
 	s.Branch = ""
 	s.PRNumber = ""
 	writeSession(s)
+
+	// Return to base, wait for merge to propagate, pull
+	returnToBase()
+
+	// Clean up local branch
+	if oldBranch != "" {
+		_ = runSilent("git", "branch", "-D", oldBranch)
+	}
+}
+
+// returnToBase checks out the base branch, waits for any pending merge
+// to propagate, and pulls the latest. Always leaves us on base with
+// the latest code, ready for the next step.
+func returnToBase() {
+	s, _ := readSession()
+
+	base := s.BaseBranch
+	if base == "" {
+		base = "main"
+	}
+
+	current, _ := runCapture("git", "rev-parse", "--abbrev-ref", "HEAD")
+	if current == base {
+		// Already on base — just pull
+		_ = runSilent("git", "pull", "--ff-only", "origin", base)
+		return
+	}
+
+	// Discard any uncommitted state on the work branch
+	_ = runSilent("git", "reset", "--hard")
+	_ = runSilent("git", "clean", "-fd")
+
+	// Switch to base
+	if err := runSilent("git", "checkout", base); err != nil {
+		log("WARN: checkout %s failed, trying main", base)
+		if runSilent("git", "checkout", "main") != nil {
+			_ = runSilent("git", "checkout", "master")
+		}
+	}
+
+	// Wait for GitHub to register the merge
+	time.Sleep(5 * time.Second)
+
+	// Pull latest (includes the just-merged squash commit)
+	_ = runSilent("git", "pull", "--ff-only", "origin", base)
 }
 
 // collectCIStatus appends CI info to the snapshot.
