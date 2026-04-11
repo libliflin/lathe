@@ -41,8 +41,12 @@ func runCycle(cycle int, tool string) error {
 			return err
 		}
 
-		// Check verifier's verdict
+		// Check verifier's verdict — but CI failures override PASS
 		verdict := readVerdict()
+		if ciResult == "fail" {
+			log("CI failed — overriding verdict. Looping builder to fix.")
+			verdict = "NEEDS_WORK"
+		}
 		if verdict == "PASS" {
 			log("Verifier passed on round %d. Moving to next goal.", round)
 			break
