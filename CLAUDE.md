@@ -15,6 +15,8 @@ The core value proposition: lathe init identifies the stakeholders of a project 
 
 ## Architecture
 
+Single Go binary with all templates embedded via `go:embed`. Builds for all platforms via GitHub Actions; self-updates via `lathe update`.
+
 **`lathe init`** — The alignment step. Runs three sequential AI calls, each producing a behavioral doc:
 1. `meta-goal.md` → `.lathe/goal.md` — stakeholder map, tensions, ranking guidance. Values manifesto spliced in.
 2. `meta-builder.md` → `.lathe/builder.md` — implementation quality, CI/PR workflow. Reads goal.md for alignment.
@@ -22,9 +24,9 @@ The core value proposition: lathe init identifies the stakeholders of a project 
 
 Use `--agent=goal`, `--agent=builder`, or `--agent=verifier` to re-init just one role without touching the others.
 
-**`lathe start`** — The execution loop. One cycle = goal-setter + 4 rounds of (builder + verifier). Each of the 9 steps follows identical plumbing: branch → snapshot → agent → safety net → PR → CI → merge → back to main. The engine is dumb plumbing; smart decisions live in the agent prompts.
+**`lathe start`** — The execution loop. One cycle = goal-setter + adaptive rounds of builder/verifier. The verifier writes a `VERDICT: PASS` or `VERDICT: NEEDS_WORK` in the changelog — PASS moves to the next goal, NEEDS_WORK loops the builder with the verifier's feedback. Max 4 rounds per goal as a safety cap. Each step follows identical plumbing: branch → snapshot → agent → safety net → PR → CI → merge → back to main. The engine is dumb plumbing; smart decisions live in the agent prompts.
 
-**Templates** — Static mechanics only:
+**Templates** — Embedded in the binary via `go:embed`, read-only:
 - `templates/meta-goal.md` — instructions for goal-setter init
 - `templates/meta-builder.md` — instructions for builder init
 - `templates/meta-verifier.md` — instructions for verifier init
@@ -39,13 +41,21 @@ Use `--agent=goal`, `--agent=builder`, or `--agent=verifier` to re-init just one
 ## File Map
 
 ```
-bin/lathe                        — CLI entrypoint (init, start, stop, status, logs)
-engine/loop.sh                   — Cycle engine orchestrator (goal + 4x builder/verifier)
-engine/lib/
-  process.sh                     — Process management (kill tree, find agent, is_running)
-  state.sh                       — State helpers, session management, teardown
-  ci.sh                          — CI polling, auto-merge, CI status collection
-  agent.sh                       — Snapshot, prompt assembly, three agent functions
+main.go                          — CLI entrypoint, path setup
+init.go                          — lathe init (generates agent docs, spinner, rate limit retry)
+engine.go                        — lathe start/stop/status/logs (background process)
+cycle.go                         — Cycle loop (goal + adaptive builder/verifier with verdict)
+agent.go                         — Goal-setter, builder, verifier prompt assembly
+invoke.go                        — Agent invocation, rate limit detection and sleep
+update.go                        — Self-updater (checks GitHub Releases)
+prompt.go                        — Shared prompt helpers (skills, refs, snapshot, session context)
+snapshot.go                      — Project state collection
+state.go                         — Session state management, archiving
+ci.go                            — CI polling, auto-merge, CI status collection
+safety.go                        — Safety net validation
+process.go                       — Process management (kill tree, find agent, is_running)
+shell.go                         — Shell execution helpers (run, runCapture, runPipe)
+embed.go                         — go:embed for templates/
 templates/
   meta-goal.md                   — Instructions for goal-setter init
   meta-builder.md                — Instructions for builder init
@@ -79,7 +89,7 @@ templates/
   session.json               — Branch name, PR number, base branch, mode
   cycle.json                 — Current cycle number and phase
   snapshot.txt               — Latest snapshot output
-  changelog.md               — Latest changelog
+  changelog.md               — Latest changelog (verifier writes VERDICT here)
   theme.txt                  — Session theme (from --theme flag)
   rate-limited               — Sentinel for rate limit backoff
   lathe.pid                  — Engine process ID
@@ -102,6 +112,6 @@ History lives inside `session/` (gitignored). The real audit trail is the squash
 - The engine uses `--dangerously-skip-permissions --print` for runtime. Init uses `-p` with `--allowedTools` for controlled writes.
 - `.lathe/session/` is gitignored entirely — never blocks branch switches, never committed.
 - No fallback templates. Init succeeds or fails.
-- Smart decisions belong in the agent prompts, not shell. The engine is plumbing.
+- Smart decisions belong in the agent prompts, not the engine. The engine is plumbing.
 - Each step follows identical plumbing: branch → snapshot → CI status → agent → archive → safety net → PR → CI wait → merge. Teardown works at any point.
-- One cycle = 9 merge steps: 1 goal + 4 builder + 4 verifier. Each returns to main before the next starts.
+- The verifier writes `VERDICT: PASS` or `VERDICT: NEEDS_WORK` in changelog.md. The engine reads this to decide whether to loop the builder again or advance to the next goal.
