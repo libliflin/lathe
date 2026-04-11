@@ -1,0 +1,44 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Test
+        run: go test ./...
+
+      - name: Build binaries
+        run: |
+          mkdir -p dist
+          GOOS=darwin  GOARCH=arm64 go build -o dist/lathe-darwin-arm64  .
+          GOOS=darwin  GOARCH=amd64 go build -o dist/lathe-darwin-amd64  .
+          GOOS=linux   GOARCH=amd64 go build -o dist/lathe-linux-amd64   .
+          GOOS=linux   GOARCH=arm64 go build -o dist/lathe-linux-arm64   .
+          GOOS=windows GOARCH=amd64 go build -o dist/lathe-windows-amd64.exe .
+
+      - name: Get short SHA
+        id: sha
+        run: echo "short=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="v0.0.0-${{ steps.sha.outputs.short }}"
+          gh release create "$TAG" dist/* \
+            --title "lathe @ ${{ steps.sha.outputs.short }}" \
+            --notes "Built from $(git rev-parse HEAD) on main." \
+            --latest
