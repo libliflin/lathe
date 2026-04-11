@@ -1,0 +1,73 @@
+package main
+
+import (
+	"fmt"
+	"time"
+)
+
+// runCycle executes one full cycle: goal-setter → 4×(builder + verifier).
+// Each step follows identical plumbing: branch → snapshot → agent → safety → PR → CI → merge.
+func runCycle(cycle int, tool string) error {
+	fmt.Println()
+	fmt.Println("═══════════════════════════════════════════════")
+	fmt.Printf("  CYCLE %d — %s\n", cycle, time.Now().Format("2006-01-02 15:04:05"))
+	fmt.Println("═══════════════════════════════════════════════")
+	fmt.Println()
+
+	// --- Goal Setter ---
+	if err := runStep(cycle, "goal", tool, func() error {
+		return runGoalSetter(cycle, tool)
+	}); err != nil {
+		return err
+	}
+	archiveGoal(cycle)
+
+	// --- Builder/Verifier Rounds ---
+	for round := 1; round <= roundsPerCycle; round++ {
+		// Builder
+		if err := runStep(cycle, fmt.Sprintf("round-%d-build", round), tool, func() error {
+			return runBuilder(cycle, round, tool)
+		}); err != nil {
+			return err
+		}
+
+		// Verifier
+		if err := runStep(cycle, fmt.Sprintf("round-%d-verify", round), tool, func() error {
+			return runVerifier(cycle, round, tool)
+		}); err != nil {
+			return err
+		}
+	}
+
+	setCycle(cycle, "complete")
+	return nil
+}
+
+// runStep is the shared plumbing for every step in a cycle.
+func runStep(cycle int, phase string, tool string, agentFn func() error) error {
+	waitForRateLimit()
+	setCycle(cycle, phase)
+	log("%s ...", phase)
+
+	if err := createSessionBranch(); err != nil {
+		return fmt.Errorf("create branch: %w", err)
+	}
+
+	collectSnapshot()
+	collectCIStatus()
+
+	// Run the agent — errors are non-fatal (agent might fail, cycle continues)
+	agentFn()
+
+	archiveCycle(cycle)
+	safetyNet()
+	discoverPR()
+
+	// Give GitHub time to register the push
+	time.Sleep(30 * time.Second)
+
+	waitForCI()
+	autoMergeIfGreen()
+
+	return nil
+}
