@@ -93,11 +93,11 @@ func runStep(cycle int, phase string, tool string, agentFn func() error) error {
 
 	archiveCycle(cycle)
 	safetyNet()
-	discoverPR()
 
-	// Give GitHub time to register the push
+	// Give GitHub time to register the push and PR
 	time.Sleep(30 * time.Second)
 
+	discoverPR()
 	waitForCI()
 	autoMergeIfGreen()
 
