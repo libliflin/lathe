@@ -35,7 +35,7 @@ Use `--agent=goal`, `--agent=builder`, or `--agent=verifier` to re-init just one
 
 ### `lathe start` — the execution loop
 
-One cycle = goal-setter + 4 rounds of (builder + verifier). Each of the 9 steps follows identical plumbing:
+One cycle = goal-setter + adaptive rounds of builder/verifier. The verifier decides when the goal is met (`VERDICT: PASS`) or sends feedback to the builder (`VERDICT: NEEDS_WORK`). Max 4 rounds per goal as a safety cap. Each step follows identical plumbing:
 
 ```
 create branch → snapshot + CI status → agent works → safety net
@@ -47,9 +47,11 @@ create branch → snapshot + CI status → agent works → safety net
 ## Quick Start
 
 ```bash
-# Install
-git clone https://github.com/libliflin/lathe.git
-export PATH="$PATH:$(pwd)/lathe/bin"
+# Install (requires Go)
+go install github.com/libliflin/lathe@latest
+
+# Or download a binary from GitHub Releases:
+# https://github.com/libliflin/lathe/releases
 
 # Initialize (reads your project, generates stakeholder-aware agents)
 cd your-project
@@ -58,12 +60,13 @@ lathe init --interactive  # participate in stakeholder discovery
 
 # Verify alignment
 cat .lathe/alignment-summary.md
-# Then: ask a reviewer to read the diff of .lathe/ and confirm the
-# stakeholders and tensions match the project you actually have.
 
 # Run
 lathe start --cycles 10 --theme "harden edge cases"
 lathe logs --follow
+
+# Update to latest version
+lathe update
 ```
 
 ## Workflow
@@ -93,18 +96,31 @@ lathe status                            # current cycle, phase, branch, PR
 lathe logs                              # latest step log
 lathe logs --follow                     # stream logs live
 lathe stop                              # full teardown
+
+lathe update                            # self-update to latest release
+lathe version                           # show current version
 ```
 
 ## Architecture
 
+Single Go binary with all templates embedded via `go:embed`.
+
 ```
-bin/lathe                  — CLI entrypoint (init, start, stop, status, logs)
-engine/loop.sh             — Cycle engine (goal + 4x builder/verifier)
-engine/lib/
-  process.sh               — Process management
-  state.sh                 — State helpers, session management, teardown
-  ci.sh                    — CI polling, auto-merge, CI status collection
-  agent.sh                 — Snapshot, three agent functions, shared helpers
+main.go                    — CLI entrypoint, path setup
+init.go                    — lathe init (generates agent docs)
+engine.go                  — lathe start/stop/status/logs
+cycle.go                   — Cycle loop (goal + adaptive builder/verifier)
+agent.go                   — Goal-setter, builder, verifier prompt assembly
+invoke.go                  — Agent invocation, rate limit handling
+update.go                  — Self-updater (checks GitHub Releases)
+prompt.go                  — Shared prompt helpers (skills, refs, snapshot)
+snapshot.go                — Project state collection
+state.go                   — Session state management
+ci.go                      — CI polling, auto-merge
+safety.go                  — Safety net validation
+process.go                 — Process management (kill tree, find agent)
+shell.go                   — Shell execution helpers
+embed.go                   — go:embed for templates/
 templates/
   meta-goal.md             — Instructions for goal-setter init
   meta-builder.md          — Instructions for builder init
@@ -158,8 +174,6 @@ The snapshot is fed directly into the LLM prompt, which makes everything fetched
 
 ## Requirements
 
-- **Bash 4+**
-- **Python 3** (for state management)
 - **Git**
 - **Claude CLI** (`claude`) or **AMP** (`amp`)
 - **`gh` CLI** (optional, enables PR/CI workflow)
