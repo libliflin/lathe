@@ -43,8 +43,18 @@ func runCaptureAll(name string, args ...string) (string, error) {
 	return strings.TrimSpace(out.String()), err
 }
 
-// runPipe executes a command, piping stdin from a string, and teeing output to a writer and a file.
+// runPipe executes a command, piping stdin from a string, and logging output to a file.
+// If tee is true, output also goes to stdout/stderr.
 func runPipe(input string, logFile string, name string, args ...string) (int, error) {
+	return runPipeOpts(input, logFile, true, name, args...)
+}
+
+// runPipeQuiet executes a command, piping stdin from a string, logging to file only.
+func runPipeQuiet(input string, logFile string, name string, args ...string) (int, error) {
+	return runPipeOpts(input, logFile, false, name, args...)
+}
+
+func runPipeOpts(input string, logFile string, tee bool, name string, args ...string) (int, error) {
 	cmd := exec.Command(name, args...)
 	cmd.Stdin = strings.NewReader(input)
 
@@ -54,9 +64,13 @@ func runPipe(input string, logFile string, name string, args ...string) (int, er
 	}
 	defer f.Close()
 
-	// Tee to both stdout and log file
-	cmd.Stdout = io.MultiWriter(os.Stdout, f)
-	cmd.Stderr = io.MultiWriter(os.Stderr, f)
+	if tee {
+		cmd.Stdout = io.MultiWriter(os.Stdout, f)
+		cmd.Stderr = io.MultiWriter(os.Stderr, f)
+	} else {
+		cmd.Stdout = f
+		cmd.Stderr = f
+	}
 
 	if err := cmd.Run(); err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {

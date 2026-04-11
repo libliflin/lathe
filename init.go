@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 func detectType() string {
@@ -69,18 +70,51 @@ func generateAgentRole(role, tool string, interactive bool) error {
 		if interactive {
 			return run("claude", prompt, "--allowedTools", "Read,Write,Edit,Glob,Grep")
 		}
-		fmt.Printf("  Generating %s agent ...\n", role)
-		_, err := runPipe(prompt, logFile, "claude", "-p", "--allowedTools", "Read,Write,Edit,Glob,Grep")
+		stop := spinner(role)
+		_, err := runPipeQuiet(prompt, logFile, "claude", "-p", "--allowedTools", "Read,Write,Edit,Glob,Grep")
+		stop()
 		return err
 	case "amp":
 		if interactive {
 			return run("amp", "--dangerously-allow-all")
 		}
-		fmt.Printf("  Generating %s agent ...\n", role)
-		_, err := runPipe(prompt, logFile, "amp", "--dangerously-allow-all")
+		stop := spinner(role)
+		_, err := runPipeQuiet(prompt, logFile, "amp", "--dangerously-allow-all")
+		stop()
 		return err
 	default:
 		return fmt.Errorf("unknown tool: %s", tool)
+	}
+}
+
+// spinner shows an animated spinner with elapsed time while an agent runs.
+// Returns a stop function that clears the spinner line.
+func spinner(role string) func() {
+	done := make(chan struct{})
+	start := time.Now()
+	go func() {
+		frames := []rune("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
+		i := 0
+		for {
+			select {
+			case <-done:
+				return
+			default:
+				elapsed := time.Since(start).Truncate(time.Second)
+				mins := int(elapsed.Minutes())
+				secs := int(elapsed.Seconds()) % 60
+				fmt.Fprintf(os.Stderr, "\r  %c  Generating %s agent ... %dm%02ds", frames[i%len(frames)], role, mins, secs)
+				i++
+				time.Sleep(100 * time.Millisecond)
+			}
+		}
+	}()
+	return func() {
+		close(done)
+		elapsed := time.Since(start).Truncate(time.Second)
+		mins := int(elapsed.Minutes())
+		secs := int(elapsed.Seconds()) % 60
+		fmt.Fprintf(os.Stderr, "\r  ✓  Generated %s agent (%dm%02ds)\n", role, mins, secs)
 	}
 }
 
