@@ -1,6 +1,6 @@
 ---
 name: lathe
-description: Knowledge about the Lathe autonomous code improvement system. Trigger when the user mentions lathe, .lathe directory, lathe cycles, lathe init, lathe start, agent.md, lathe agent, lathe snapshot, lathe retro, reviewing lathe's work, checking what lathe did, evaluating lathe output, or when the current project has a .lathe/ directory and the user asks about autonomous changes, changelogs, or cycle history.
+description: Knowledge about the Lathe autonomous code improvement system. Trigger when the user mentions lathe, .lathe directory, lathe cycles, lathe init, lathe start, agent.md, lathe agent, lathe snapshot, reviewing lathe's work, checking what lathe did, evaluating lathe output, or when the current project has a .lathe/ directory and the user asks about autonomous changes, changelogs, or cycle history.
 ---
 
 You have knowledge about Lathe, an autonomous code improvement loop. This skill helps you understand what lathe is, what the `.lathe/` directory in your project means, and how to assess whether lathe is doing good work.
@@ -27,21 +27,20 @@ If your project has a `.lathe/` directory, lathe has been initialized on it. Her
   snapshot.sh           — Script that collects project state each cycle (build status,
                           test results, git state). Runs at the start of every cycle.
   alignment-summary.md  — Plain-English summary of alignment decisions for human review.
-  decisions.md          — Permanent decisions the agent won't revisit (session-scoped, tracked)
   session/              — Ephemeral engine runtime (gitignored, wiped on stop):
     session.json        — Current session (branch, PR number, mode)
     theme.txt           — Session purpose set by user via --theme
     cycle.json          — Current cycle number
     snapshot.txt        — Latest snapshot output
     changelog.md        — Latest cycle's changelog
-    history/            — Archived cycle changelogs and snapshots (for retro)
+    history/            — Archived cycle changelogs and snapshots
     logs/               — Per-cycle agent logs
 ```
 
 ## How a Cycle Works
 
 1. Engine runs snapshot.sh to collect project state and CI status
-2. Engine assembles prompt: agent.md + skills + refs + theme + decisions + snapshot + session context + previous changelog + retro (every 5 cycles)
+2. Engine assembles prompt: agent.md + skills + refs + theme + snapshot + session context
 3. Agent picks the single highest-value change and implements it
 4. Agent commits, pushes, creates PR if needed
 5. Engine archives the cycle (changelog + snapshot to history/)

@@ -1,6 +1,6 @@
 # engine/lib/agent.sh — Snapshot, falsification, prompt assembly, agent invocation, safety net
 # Sourced by engine/loop.sh. Expects LATHE_DIR, LATHE_SESSION, LATHE_SKILLS,
-# LATHE_DECISIONS, LATHE_HISTORY, RETRO_INTERVAL set.
+# LATHE_HISTORY set.
 
 # ---------------------------------------------------------------------------
 # Snapshot — run project's snapshot.sh
@@ -159,14 +159,6 @@ run_agent() {
         prompt+="Use this to guide your pick step. The stakeholder framework in agent.md still applies — the theme tells you where to focus within it, not to override it."$'\n\n'
     fi
 
-    # Permanent decisions
-    if [[ -f "$LATHE_DECISIONS" ]]; then
-        prompt+="---"$'\n'
-        prompt+="# PERMANENT DECISIONS — DO NOT REVISIT"$'\n\n'
-        prompt+="$(cat "$LATHE_DECISIONS")"
-        prompt+=$'\n\n'
-    fi
-
     # Current snapshot
     prompt+="---"$'\n'
     prompt+="# Current Project Snapshot"$'\n\n'
@@ -223,40 +215,6 @@ run_agent() {
         prompt+="The engine never merges anything for you (there is nothing to merge). It just polls the build check and surfaces the result in the next cycle's snapshot."$'\n'
         prompt+="After implementing your change: \`git add\`, \`git commit -S\`, \`git push origin ${session_base:-main}\`."$'\n\n'
         prompt+="**Changelog:** After completing your work, write a brief changelog to \`.lathe/session/changelog.md\` describing what you changed and which stakeholder it benefits. This is read by the engine for retros — if you don't write it, the retro has nothing to review."$'\n\n'
-    fi
-
-    # Previous cycle changelog
-    local prev_cycle=$((cycle - 1))
-    local prev_dir
-    prev_dir=$(printf "%s/cycle-%03d" "$LATHE_HISTORY" "$prev_cycle")
-    if [[ -f "$prev_dir/changelog.md" ]]; then
-        prompt+="---"$'\n'
-        prompt+="# Previous Cycle Changelog (Cycle $prev_cycle)"$'\n\n'
-        prompt+="$(cat "$prev_dir/changelog.md")"
-        prompt+=$'\n\n'
-    fi
-
-    # Retro mode: every N cycles, inject last N changelogs
-    if (( cycle > 1 )) && (( cycle % RETRO_INTERVAL == 0 )); then
-        prompt+="---"$'\n'
-        prompt+="# Retro Mode — Last $RETRO_INTERVAL Cycles"$'\n'
-        prompt+="Review the last $RETRO_INTERVAL cycles for patterns:"$'\n'
-        prompt+="- Are we stuck? Making progress? Repeating the same fix?"$'\n'
-        prompt+="- Which stakeholder benefited from each cycle? Is any stakeholder being neglected?"$'\n'
-        prompt+="- Are we still aligned with the theme (if set) and the stakeholder priorities in agent.md?"$'\n'
-        prompt+="- **Big bet or little bet?** Is the highest-leverage move right now advancing into new territory or hardening what we have? Pick one direction for the next few cycles."$'\n\n'
-        local start_cycle=$((cycle - RETRO_INTERVAL))
-        (( start_cycle < 1 )) && start_cycle=1
-        for (( c=start_cycle; c<cycle; c++ )); do
-            local cdir
-            cdir=$(printf "%s/cycle-%03d" "$LATHE_HISTORY" "$c")
-            if [[ -f "$cdir/changelog.md" ]]; then
-                prompt+="## Cycle $c"$'\n'
-                prompt+='```'$'\n'
-                prompt+="$(cat "$cdir/changelog.md")"
-                prompt+=$'\n''```'$'\n\n'
-            fi
-        done
     fi
 
     # Red-team section: runs every cycle alongside normal work.

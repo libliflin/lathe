@@ -13,8 +13,7 @@ Lathe is an opinionated, automatic approach to the alignment problem for autonom
 1. **Identify who the project serves** — `lathe init` reads the project and discovers its real stakeholders, their journeys, and where those needs conflict.
 2. **Encode values** — init writes `agent.md` and skills that make the runtime agent stakeholder-aware. The agent picks the most valuable change each cycle, not the easiest or most obvious.
 3. **Provide ongoing direction** — `--theme` lets the user state a purpose for a session ("get the CLI working end-to-end") that biases decisions without overriding the stakeholder framework.
-4. **Detect drift** — every 5 cycles, a retro checks which stakeholders benefited and whether anyone is being neglected.
-5. **Maintain oversight** — every cycle is a git commit with a changelog that names who benefits and how.
+4. **Maintain oversight** — every cycle is a git commit with a changelog that names who benefits and how.
 
 ## Architecture
 
@@ -97,16 +96,14 @@ The falsification suite (`claims.md` + `falsify.sh`) is the structural defense a
   rate-limited               — Sentinel for rate limit backoff
   lathe.pid                  — Engine process ID
   logs/                      — Per-cycle agent logs and stream log
-  history/                   — Archived cycle changelogs and snapshots (for retro)
-
-.lathe/decisions.md          — Tracked. Agent-written permanent decisions.
+  history/                   — Archived cycle changelogs and snapshots
 ```
 
-History lives inside `session/` (gitignored) — it only exists to feed the retro every 5 cycles. The real audit trail is the squash merge commit on main. Decisions are tracked and travel to main via the agent's commits.
+History lives inside `session/` (gitignored). The real audit trail is the squash merge commit on main.
 
 **`lathe init` (re-init)** wipes everything in `.lathe/` except `refs/` and regenerates config. Old history, decisions, and session state are discarded — the new agent shouldn't be constrained by the old one's decisions.
 
-**`lathe stop`** performs full teardown: kills the process tree (recursive, handles claude daemon clients), closes the PR (with `--delete-branch`), discards dirty working tree, checks out the base branch, deletes the local lathe branch, and wipes `session/` and `decisions.md`.
+**`lathe stop`** performs full teardown: kills the process tree (recursive, handles claude daemon clients), closes the PR (with `--delete-branch`), discards dirty working tree, checks out the base branch, deletes the local lathe branch, and wipes `session/`.
 
 ## Conventions
 

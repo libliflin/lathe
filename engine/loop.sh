@@ -5,13 +5,9 @@
 # Session state — ephemeral, gitignored, wiped on stop
 LATHE_SESSION="$LATHE_DIR/session"
 LATHE_HISTORY="$LATHE_SESSION/history"
-# Durable state — tracked, committed by agent, wiped on stop
-LATHE_DECISIONS="$LATHE_DIR/decisions.md"
-
 LATHE_SKILLS="$LATHE_DIR/skills"
 PID_FILE="$LATHE_SESSION/lathe.pid"
 SESSION_FILE="$LATHE_SESSION/session.json"
-RETRO_INTERVAL=5
 CI_WAIT_TIMEOUT=300  # seconds to wait for CI (5 min — container pulls alone can take 1-2 min)
 
 # In direct mode, the loop polls a single named check run on the latest

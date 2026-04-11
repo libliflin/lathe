@@ -76,7 +76,7 @@ In practice, value-driven development is more rhythm than document.
 
 You start by reading the project hard enough to figure out who it actually serves and what you've promised them. You write that down as prose, not as a checklist. You work in small cycles, and each cycle the agent picks the one change that most improves some specific stakeholder's life, then writes down who benefited and how. Periodically it stops building and runs the adversarial pass: does every claim still hold? Did the last few cycles quietly break something? A claim that can't be broken on purpose is either load-bearing or decorative, and you want to know which before you ship.
 
-Every few cycles you look back over the recent work and ask which stakeholder has been getting all the attention, and which one has been quietly neglected. The owner reads those retros and decides whether the tool is earning its keep. That's the feedback loop, and it lives outside the system, held by the human whose project it is. Nothing in this method tries to self-grade. The grading is the owner's job and stays that way.
+The owner reads the git log and decides whether the tool is earning its keep. That's the feedback loop, and it lives outside the system, held by the human whose project it is. Nothing in this method tries to self-grade. The grading is the owner's job and stays that way.
 
 The agent's input is the frame, the current state, and the question: *which stakeholder's day can I make noticeably better right now?*
 

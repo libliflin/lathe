@@ -188,7 +188,6 @@ teardown_session() {
         git branch -D "$branch" 2>/dev/null || true
     fi
 
-    # Wipe all session and durable state — clean slate
+    # Wipe session state — clean slate
     rm -rf "$LATHE_SESSION"
-    rm -f "$LATHE_DECISIONS"
 }
