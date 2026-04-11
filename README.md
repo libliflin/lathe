@@ -99,7 +99,12 @@ lathe stop                              # full teardown: kill, close PR, return 
 
 ```
 bin/lathe                  — CLI entrypoint (init, start, stop, status, logs)
-engine/loop.sh             — Cycle engine: snapshot, prompt assembly, CI wait, safety net, auto-merge
+engine/loop.sh             — Cycle engine orchestrator (sources lib/, defines commands + cycle loop)
+engine/lib/
+  process.sh               — Process management (kill tree, find agent, is_running)
+  state.sh                 — State helpers, session management, teardown
+  ci.sh                    — CI polling, auto-merge, CI status collection
+  agent.sh                 — Snapshot, falsification, prompt assembly, agent invocation
 templates/
   meta-prompt.md           — Instructions for the init agent (the most important file in the project)
   values-manifesto.md      — The values manifesto, spliced into the meta-prompt so the init agent reads the *why* before the *how*

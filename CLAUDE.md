@@ -47,7 +47,12 @@ The cycle: wait for CI → snapshot (including CI results) → prompt assembly �
 
 ```
 bin/lathe                        — CLI entrypoint (init, start, stop, status, logs)
-engine/loop.sh                   — Cycle engine (snapshot, prompt assembly, commit, retro)
+engine/loop.sh                   — Cycle engine orchestrator (sources lib/, defines commands + cycle loop)
+engine/lib/
+  process.sh                     — Process management (kill tree, find agent, is_running)
+  state.sh                       — State helpers, session management, teardown
+  ci.sh                          — CI polling, auto-merge, CI status collection
+  agent.sh                       — Snapshot, falsification, prompt assembly, agent invocation
 templates/
   meta-prompt.md                 — Instructions for the init agent
   values-manifesto.md            — The values manifesto, injected into meta-prompt via {{VALUES_MANIFESTO}}. Authoritative source for lathe's design intent; the init agent reads it before the structural rules.
@@ -78,7 +83,7 @@ There are exactly two categories of state under `.lathe/`:
 .lathe/refs/*.md             — User-curated reference material
 ```
 
-The falsification suite (`claims.md` + `falsify.sh`) is the structural defense against Goodhart and metric-gaming. The engine runs `falsify.sh` from `collect_falsification` each cycle and appends a `## Falsification` block to the snapshot. Every `RED_TEAM_INTERVAL` cycles (currently 4), `run_agent` injects a "Red-Team Cycle" prompt section that shifts the cycle's job from build to falsify. Both files are config — the agent extends them as the project grows.
+The falsification suite (`claims.md` + `falsify.sh`) is the structural defense against Goodhart and metric-gaming. The engine runs `falsify.sh` from `collect_falsification` each cycle and appends a `## Falsification` block to the snapshot. Every cycle, `run_agent` injects a "Red-Team Review" section that tells the agent to review and strengthen claims alongside its normal work (CI output is referenced so the agent sees build health as part of the adversarial picture). Both files are config — the agent extends them as the project grows.
 
 **Session** — born on `lathe start`, dies on `lathe stop`, everything wiped:
 
