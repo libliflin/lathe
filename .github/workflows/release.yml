@@ -23,11 +23,12 @@ jobs:
       - name: Build binaries
         run: |
           mkdir -p dist
-          GOOS=darwin  GOARCH=arm64 go build -o dist/lathe-darwin-arm64  .
-          GOOS=darwin  GOARCH=amd64 go build -o dist/lathe-darwin-amd64  .
-          GOOS=linux   GOARCH=amd64 go build -o dist/lathe-linux-amd64   .
-          GOOS=linux   GOARCH=arm64 go build -o dist/lathe-linux-arm64   .
-          GOOS=windows GOARCH=amd64 go build -o dist/lathe-windows-amd64.exe .
+          LDFLAGS="-X main.version=$(git rev-parse --short HEAD)"
+          GOOS=darwin  GOARCH=arm64 go build -ldflags "$LDFLAGS" -o dist/lathe-darwin-arm64  .
+          GOOS=darwin  GOARCH=amd64 go build -ldflags "$LDFLAGS" -o dist/lathe-darwin-amd64  .
+          GOOS=linux   GOARCH=amd64 go build -ldflags "$LDFLAGS" -o dist/lathe-linux-amd64   .
+          GOOS=linux   GOARCH=arm64 go build -ldflags "$LDFLAGS" -o dist/lathe-linux-arm64   .
+          GOOS=windows GOARCH=amd64 go build -ldflags "$LDFLAGS" -o dist/lathe-windows-amd64.exe .
 
       - name: Get short SHA
         id: sha

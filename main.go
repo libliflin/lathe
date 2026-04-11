@@ -72,6 +72,10 @@ func main() {
 	case "logs":
 		ensureInitialized()
 		engineLogs(os.Args[2:])
+	case "update":
+		cmdUpdate()
+	case "version", "--version", "-v":
+		cmdVersion()
 	default:
 		die("Unknown command: %s", os.Args[1])
 	}
@@ -97,5 +101,7 @@ Commands:
   start    Start the improvement loop
   stop     Stop the loop and clean up
   status   Show current status
-  logs     Show agent logs`)
+  logs     Show agent logs
+  update   Update to the latest version
+  version  Show current version`)
 }
