@@ -22,6 +22,8 @@ An autonomous agent will read this file each round along with a goal and a proje
 - Validate your change. Run tests, check the build, verify the change actually does what the goal says.
 - If the goal is unclear or impossible given the current project state, do your best interpretation and explain your reasoning in the changelog.
 
+**Solve the general problem.** When implementing a fix, ask: "Am I patching one instance, or eliminating the class of error?" Prefer structural solutions — types that make invalid states unrepresentable, APIs that can't be misused, invariants enforced by the compiler rather than by convention. If you're adding a runtime check, consider whether a type change would make the check unnecessary. The best implementation is one where the bug can't be reintroduced because the language prevents it.
+
 **Working with CI/CD and PRs.**
 
 The lathe runs on a branch and uses PRs to trigger CI. The engine provides session context (current branch, PR number, CI status) in the prompt each round. Include guidance for the builder on how to work within this model:

@@ -28,6 +28,8 @@ An autonomous agent will read this file each round along with the builder's diff
    - Inputs that would make this change fail
    - Regressions this change could cause elsewhere
 
+4. **Is this a patch or a real fix?** If the builder added a runtime check, ask: could a type, a newtype wrapper, or an API change make this check unnecessary? If the same class of bug could be reintroduced by a future change, the fix is incomplete. Flag it in findings — not as a blocker, but as a note for the goal-setter to consider a structural follow-up.
+
 4. **Are there missing tests?** If the builder added functionality without tests, write them. If the builder's tests only cover the happy path, add adversarial cases. Tests belong in the project's test suite, not in a separate system.
 
 **What the Verifier Commits.**

@@ -79,6 +79,8 @@ The goal file is committed to the repo. The builder reads it and implements it.
 
 Frame "pick" as an act of empathy — imagine a real person encountering this project today.
 
+**Think in classes, not instances.** When you see a bug, don't write a goal for that bug — write a goal for the class of bugs it represents. Ask: "What would eliminate this entire category of error?" A runtime check catches one mistake; a type-system change makes the mistake unrepresentable. Prefer goals that make wrong states impossible over goals that detect wrong states at runtime. The best goal isn't "add a guard for X" — it's "make X structurally impossible."
+
 **Own your inputs.** You are a client of the snapshot, the skills files, and the goal history. If any of these are not serving your decision-making — too noisy, measuring the wrong things, missing context you need — fix them. Update `.lathe/snapshot.sh` to report what you actually need. Update skills files to capture knowledge the builder needs. You are responsible for the quality of the information flowing through the system, not just your own output. If the snapshot is drowning you in raw test output instead of giving you health signals, that's a problem to solve, not to tolerate. If the snapshot is truncated, that's a signal that `snapshot.sh` is producing too much raw output and should be rewritten to produce a concise report.
 
 **Rules.**
@@ -94,6 +96,10 @@ Frame "pick" as an act of empathy — imagine a real person encountering this pr
 - `testing.md` — how *this project* tests (test runner, conventions, testdata/)
 - `build.md` — non-obvious build process
 - `architecture.md` — key architectural decisions visible in the code
+
+**Domain boundaries.** Every non-trivial project spans multiple domains of knowledge, each with its own authority. A compiler has the language spec, the IR design, and the target platform ABI — and a bug that looks like "the spec doesn't say what to do here" might actually be "the platform does something we didn't account for." Agents without a map of these boundaries will attribute problems to the wrong authority and propose fixes in the wrong layer.
+
+Discover the domains this project operates across and write a skill file that maps them: what each domain covers, what its authoritative source is, and where the boundaries between them create confusion. Think of it as the "who to ask about what" guide — the institutional knowledge that prevents a new team member from going to the DBA for GitHub access.
 
 **`.lathe/alignment-summary.md`** — Short, plain-English summary of alignment decisions. Include:
 - **Who this serves**: one line per stakeholder
