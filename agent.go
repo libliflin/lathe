@@ -48,29 +48,14 @@ func runGoalSetter(cycle int, tool string) error {
 	b.WriteString(gitLog)
 	b.WriteString("\n```\n\n")
 
-	// Theme — repeat it in the goal-setter instructions so it can't be missed
-	themeFile := filepath.Join(latheSession, "theme.txt")
-	if data, err := os.ReadFile(themeFile); err == nil {
-		theme := strings.TrimSpace(string(data))
-		if theme != "" {
-			b.WriteString("---\n# Session Theme (from the user)\n\n")
-			b.WriteString("The user started this session with a specific direction: **" + theme + "**\n\n")
-			b.WriteString("Your goal MUST align with this theme. Do not pick goals outside this theme.\n\n")
-		}
-	}
-
 	// Instructions
 	b.WriteString("---\n# Your Task\n\n")
 	b.WriteString("Pick the single highest-value change for this cycle. Write a goal file describing:\n")
 	b.WriteString("- **What** to change (specific, actionable)\n")
 	b.WriteString("- **Which stakeholder** it helps and why\n")
 	b.WriteString("- **Why now** — what in the snapshot makes this the most valuable change right now\n\n")
-	b.WriteString("**You are the goal-setter, NOT the builder.** Your job is to decide what to do, not to do it.\n")
-	b.WriteString("Do NOT modify source code, tests, or any project files. Only write:\n")
-	b.WriteString("1. `.lathe/session/changelog.md` — describing what goal you set and why\n")
-	b.WriteString("2. Commit and push the goal.\n\n")
-	b.WriteString("The builder implements the goal in the next step. You decide; they build.\n\n")
-	b.WriteString("If a previous goal has **OUTCOME: FAILED**, do not re-attempt it without a fundamentally different approach.\n\n")
+	b.WriteString("Commit this goal as a file the builder can read. The builder implements; you decide.\n\n")
+	b.WriteString("**Changelog:** Write a brief changelog to `.lathe/session/changelog.md` describing what goal you set and why.\n\n")
 
 	return invokeAgent(b.String(), cycle, "goal", tool)
 }

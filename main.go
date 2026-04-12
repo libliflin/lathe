@@ -18,8 +18,9 @@ var (
 	pidFile      string
 	sessionFile  string
 
-	ciWaitTimeout  = 300 // seconds
-	roundsPerCycle = 4
+	ciWaitTimeout    = 300   // seconds
+	roundsPerCycle   = 4
+	maxSnapshotChars = 10000 // truncate snapshot in agent prompts
 )
 
 func initPaths() {

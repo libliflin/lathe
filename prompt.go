@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -48,11 +49,17 @@ func assembleCommon() string {
 		}
 	}
 
-	// Snapshot
+	// Snapshot (truncated to maxSnapshotChars to keep agents at decision-making altitude)
 	b.WriteString("---\n# Current Project Snapshot\n\n")
 	snapshotFile := filepath.Join(latheSession, "snapshot.txt")
 	if data, err := os.ReadFile(snapshotFile); err == nil {
-		b.Write(data)
+		snapshot := string(data)
+		if len(snapshot) > maxSnapshotChars {
+			b.WriteString(snapshot[:maxSnapshotChars])
+			b.WriteString(fmt.Sprintf("\n\n(truncated — %d of %d characters shown due to prompt length limits)\n", maxSnapshotChars, len(snapshot)))
+		} else {
+			b.WriteString(snapshot)
+		}
 	} else {
 		b.WriteString("(no snapshot collected)")
 	}
