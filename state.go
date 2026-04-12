@@ -108,6 +108,17 @@ func archiveGoal(cycle int) error {
 	return os.WriteFile(dst, data, 0644)
 }
 
+// appendToFile appends text to a file, creating it if needed.
+func appendToFile(path, text string) error {
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	_, err = f.WriteString(text)
+	return err
+}
+
 func initSessionState(mode, theme string) error {
 	if err := os.MkdirAll(filepath.Join(latheSession, "logs"), 0755); err != nil {
 		return err

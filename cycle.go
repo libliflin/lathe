@@ -1,12 +1,17 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 )
+
+// errMaxRounds signals the engine to stop — the cycle exhausted all
+// builder/verifier rounds without CI passing.
+var errMaxRounds = errors.New("max rounds exhausted")
 
 // runCycle executes one full cycle: goal-setter → adaptive builder/verifier rounds.
 // The verifier decides when the goal is met (VERDICT: PASS). roundsPerCycle is the safety cap.
@@ -41,12 +46,20 @@ func runCycle(cycle int, tool string) error {
 			return err
 		}
 
-		// Check verifier's verdict — but CI failures override PASS
 		verdict := readVerdict()
-		if ciResult == "fail" {
-			log("CI failed — overriding verdict. Looping builder to fix.")
-			verdict = "NEEDS_WORK"
+
+		// If verifier said PASS but CI failed, the verifier got it wrong.
+		// Re-run the verifier with CI failure logs so it can investigate.
+		if verdict == "PASS" && ciResult == "fail" {
+			log("CI failed but verifier said PASS — re-running verifier to investigate CI failure.")
+			if err := runStep(cycle, fmt.Sprintf("round-%d-verify-ci", round), tool, func() error {
+				return runVerifier(cycle, round, tool)
+			}); err != nil {
+				return err
+			}
+			verdict = readVerdict()
 		}
+
 		if verdict == "PASS" {
 			log("Verifier passed on round %d. Moving to next goal.", round)
 			break
@@ -54,7 +67,9 @@ func runCycle(cycle int, tool string) error {
 		if round < roundsPerCycle {
 			log("Verifier says NEEDS_WORK. Looping builder (round %d/%d) ...", round+1, roundsPerCycle)
 		} else {
-			log("Max rounds reached (%d). Moving to next goal.", roundsPerCycle)
+			log("Max rounds reached (%d). Stopping — goal not resolved.", roundsPerCycle)
+			setCycle(cycle, "failed")
+			return errMaxRounds
 		}
 	}
 
@@ -103,6 +118,15 @@ func runStep(cycle int, phase string, tool string, agentFn func() error) error {
 
 	discoverPR()
 	waitForCI()
+
+	// Capture or clear CI failure logs
+	ciFailFile := filepath.Join(latheSession, "ci-failure.txt")
+	if ciResult == "fail" {
+		captureCIFailureLogs()
+	} else {
+		os.Remove(ciFailFile) // clear stale failure from previous step
+	}
+
 	autoMergeIfGreen()
 
 	return nil

@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -187,6 +188,10 @@ func engineRun(args []string) {
 		}
 
 		if err := runCycle(cycle, tool); err != nil {
+			if errors.Is(err, errMaxRounds) {
+				log("Stopping: %v", err)
+				return
+			}
 			log("Cycle %d error: %v", cycle, err)
 		}
 

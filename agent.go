@@ -99,6 +99,16 @@ func runBuilder(cycle, round int, tool string) error {
 		}
 	}
 
+	// CI failure details (if any)
+	ciFailFile := filepath.Join(latheSession, "ci-failure.txt")
+	if data, err := os.ReadFile(ciFailFile); err == nil && len(data) > 0 {
+		b.WriteString("---\n# CI Failure (must fix)\n\n")
+		b.WriteString("CI failed on the previous push. Here is the failure output:\n\n```\n")
+		b.Write(data)
+		b.WriteString("\n```\n\n")
+		b.WriteString("Fix the CI failure. Tests may pass locally (e.g. runtime tests skipped on macOS) but fail on Linux CI.\n\n")
+	}
+
 	// Instructions
 	b.WriteString("---\n# Your Task\n\n")
 	b.WriteString("Implement the goal above. One change, committed, validated, pushed.\n")
@@ -137,6 +147,16 @@ func runVerifier(cycle, round int, tool string) error {
 	}
 	b.WriteString(diff)
 	b.WriteString("\n```\n\n")
+
+	// CI failure details (if any)
+	ciFailFile := filepath.Join(latheSession, "ci-failure.txt")
+	if data, err := os.ReadFile(ciFailFile); err == nil && len(data) > 0 {
+		b.WriteString("---\n# CI Failure (from previous step)\n\n")
+		b.WriteString("CI failed. Here is the failure output:\n\n```\n")
+		b.Write(data)
+		b.WriteString("\n```\n\n")
+		b.WriteString("Do NOT give VERDICT: PASS if the code would cause these same CI failures. Tests may pass locally but fail on Linux CI.\n\n")
+	}
 
 	// Instructions
 	b.WriteString("---\n# Your Task\n\n")

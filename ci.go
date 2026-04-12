@@ -223,6 +223,74 @@ func returnToBase() {
 	_ = runSilent("git", "pull", "--ff-only", "origin", base)
 }
 
+// captureCIFailureLogs fetches CI failure output and writes it to session/ci-failure.txt.
+// Called after waitForCI determines CI failed, so agents can see what broke.
+func captureCIFailureLogs() {
+	s, err := readSession()
+	if err != nil {
+		return
+	}
+
+	outFile := filepath.Join(latheSession, "ci-failure.txt")
+
+	if s.Mode == "branch" && s.PRNumber != "" {
+		// Get failed check details
+		checksJSON, err := runCapture("gh", "pr", "checks", s.PRNumber, "--json", "name,bucket,link")
+		if err != nil {
+			return
+		}
+
+		var checks []struct {
+			Name   string `json:"name"`
+			Bucket string `json:"bucket"`
+			Link   string `json:"link"`
+		}
+		if err := json.Unmarshal([]byte(checksJSON), &checks); err != nil {
+			return
+		}
+
+		var out strings.Builder
+		for _, c := range checks {
+			if c.Bucket == "fail" {
+				out.WriteString(fmt.Sprintf("FAILED: %s\n", c.Name))
+			}
+		}
+
+		// Try to get the failed log output from the most recent run
+		// The link URL contains the run ID: https://github.com/owner/repo/actions/runs/12345/job/67890
+		for _, c := range checks {
+			if c.Bucket != "fail" || c.Link == "" {
+				continue
+			}
+			// Extract run ID from link
+			parts := strings.Split(c.Link, "/")
+			for i, p := range parts {
+				if p == "runs" && i+1 < len(parts) {
+					runID := parts[i+1]
+					failLog, err := runCaptureAll("gh", "run", "view", runID, "--log-failed")
+					if err == nil && failLog != "" {
+						// Truncate to ~4000 chars to fit in prompt
+						if len(failLog) > 4000 {
+							failLog = failLog[len(failLog)-4000:]
+						}
+						out.WriteString("\n--- Failed log output ---\n")
+						out.WriteString(failLog)
+					}
+					break
+				}
+			}
+			break // only need logs from first failed check
+		}
+
+		if out.Len() > 0 {
+			os.WriteFile(outFile, []byte(out.String()), 0644)
+		}
+	} else if s.Mode == "direct" {
+		// For direct mode, just record the failure — detailed logs require more API work
+		os.WriteFile(outFile, []byte("CI failed in direct mode. Check the repository's Actions tab for details.\n"), 0644)
+	}
+}
+
 // collectCIStatus appends CI info to the snapshot.
 func collectCIStatus() {
 	s, err := readSession()
@@ -256,5 +324,15 @@ func collectCIStatus() {
 		}
 	} else {
 		fmt.Fprintln(f, "(no PR yet — CI status will appear after first push)")
+	}
+
+	// My open PRs — gives agents visibility into orphaned/failed PRs
+	fmt.Fprintln(f, "\n## My Open PRs")
+	prs, err := runCapture("gh", "pr", "list", "--state", "open", "--author", "@me", "--json", "number,title,headRefName,statusCheckRollup", "--jq",
+		`.[] | "#\(.number) [\(if .statusCheckRollup then (.statusCheckRollup | map(.conclusion // .status) | join(",")) else "no-checks" end)] \(.title)"`)
+	if err == nil && prs != "" {
+		fmt.Fprintf(f, "```\n%s\n```\n", prs)
+	} else {
+		fmt.Fprintln(f, "(none)")
 	}
 }
