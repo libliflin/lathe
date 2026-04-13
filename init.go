@@ -115,18 +115,32 @@ func cmdInit(args []string) {
 	targetAgent := ""
 
 	for i := 0; i < len(args); i++ {
-		switch args[i] {
+		arg := args[i]
+		// Support --flag=value syntax
+		key, val := arg, ""
+		if eq := strings.IndexByte(arg, '='); eq >= 0 {
+			key, val = arg[:eq], arg[eq+1:]
+		}
+		switch key {
 		case "--tool":
-			i++
-			if i < len(args) {
-				tool = args[i]
+			if val != "" {
+				tool = val
+			} else {
+				i++
+				if i < len(args) {
+					tool = args[i]
+				}
 			}
 		case "--interactive":
 			interactive = true
 		case "--agent":
-			i++
-			if i < len(args) {
-				targetAgent = args[i]
+			if val != "" {
+				targetAgent = val
+			} else {
+				i++
+				if i < len(args) {
+					targetAgent = args[i]
+				}
 			}
 		default:
 			die("Unknown option: %s", args[i])
