@@ -51,12 +51,19 @@ Read the project and decide which of these apply. Don't include sections that do
 - For test runners: `-count=1` (Go), `--run` (vitest), `--forceExit` (jest) — avoid interactive/watch modes.
 - The script runs from the project root directory.
 
+## Bootstrap Test Infrastructure
+
+If the project has no test files, don't just report "no tests found" and move on. The snapshot's tests section is useless without a test to run, and the agents lose a critical health signal.
+
+Find the most logical place for a test file (next to the most important source file, following the project's conventions), and add a single tautological test — something like `test('sanity', () => expect(true).toBe(true))`. The point isn't to test anything real yet; it's to prove the test runner works, give the snapshot something to report, and give the builder a pattern to follow when adding real tests.
+
 ## How to Work
 
 1. Read the project: package.json, go.mod, Cargo.toml, Makefile, etc.
 2. Identify: build command, test command, lint command, package manager, monorepo tool
 3. Check for docker-compose, CI config, workspace config
-4. Write a snapshot.sh that collects exactly what this project needs — no more, no less
-5. Make it executable
+4. If no test files exist, add a minimal one to bootstrap the test runner
+5. Write a snapshot.sh that collects exactly what this project needs — no more, no less
+6. Make it executable
 
 Don't write a generic template. Write a script that knows this specific project.
