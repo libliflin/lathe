@@ -56,7 +56,9 @@ func assembleCommon() string {
 		snapshot := string(data)
 		if len(snapshot) > maxSnapshotChars {
 			b.WriteString(snapshot[:maxSnapshotChars])
-			b.WriteString(fmt.Sprintf("\n\n(truncated — %d of %d characters shown due to prompt length limits)\n", maxSnapshotChars, len(snapshot)))
+			b.WriteString(fmt.Sprintf("\n\n⚠ SNAPSHOT TRUNCATED — %d of %d chars shown. You are missing context.\n", maxSnapshotChars, len(snapshot)))
+			b.WriteString("Fix this: edit `.lathe/snapshot.sh` to produce a shorter, crisper report.\n")
+			b.WriteString("Summarize (pass/fail counts, not raw output). The full snapshot is at `.lathe/session/snapshot.txt`.\n")
 		} else {
 			b.WriteString(snapshot)
 		}

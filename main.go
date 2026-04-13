@@ -20,7 +20,7 @@ var (
 
 	ciWaitTimeout    = 300   // seconds
 	roundsPerCycle   = 4
-	maxSnapshotChars = 10000 // truncate snapshot in agent prompts
+	maxSnapshotChars = 6000 // truncate snapshot — tight cap pressures crisp snapshots
 )
 
 func initPaths() {
