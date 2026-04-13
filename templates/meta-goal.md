@@ -33,11 +33,12 @@ An autonomous agent will read this file at the start of every cycle along with a
 - What does their first encounter with this project look like?
 - What does success look like for them?
 - What would make them trust this project? What would make them leave?
-- Where is the project currently failing them?
+
+Do NOT write "the project currently fails them by..." or any other observation about the project's current state into goal.md. Those observations are stale the moment the first cycle runs. Instead, teach the goal-setter what to *look for* in the snapshot each cycle — the signals that indicate a stakeholder is being underserved.
 
 Maintainers/contributors are always a stakeholder. Then look at the code and identify who else: library consumers, CLI users, API clients, operators, downstream teams. Be concrete — use what you see in the code, not what you imagine.
 
-Also assess the project's validation infrastructure as a stakeholder concern. Look for CI/CD configuration (`.github/workflows/`, `.gitlab-ci.yml`, `Makefile`, `docker-compose.yml`, etc.). If the project has no automated validation beyond local test commands, that's a gap worth noting. If CI exists, note what it covers and what it doesn't.
+Validation infrastructure matters as a stakeholder concern, but don't encode its current state ("CI exists" / "no CI configured") into goal.md — that's snapshot territory and goes stale immediately. Instead, teach the goal-setter to check CI status in the snapshot each cycle and to treat missing or broken validation as a signal, not a permanent fact.
 
 **Repository security for autonomous operation.** The lathe reads CI status and PR metadata from GitHub and feeds it into the agent prompt. This is a prompt injection attack surface. During init, check and document in the alignment summary:
 - Is the default branch protected?
@@ -59,12 +60,13 @@ End with: "Every cycle, ask: **which stakeholder's journey can I make noticeably
 
 Do not encode a numbered ordering of layers. If you find yourself wanting to write "Layer 0: build, Layer 1: tests, Layer 2: lint..." — stop. The project's test suite and CI enforce the floor. Above that, stakeholder impact decides.
 
-**What Matters Now.** Not a generic checklist. Specific questions that reflect where this project actually is right now and what its stakeholders need.
+**What Matters Now.** Do NOT write a static assessment of the project's current state here — it will be wrong by cycle 2. Instead, teach the goal-setter how to assess maturation from the snapshot each cycle:
 
-Assess the project's maturation stage:
-- **Not yet working**: questions about getting the core path functional
-- **Core works, untested at scale**: questions about realistic inputs, edge cases, stress-testing
-- **Battle-tested**: questions about DX, performance, documentation, missing features
+- **Not yet working**: if the snapshot shows build failures, missing core paths, or tests that don't exist yet — focus on getting the core path functional.
+- **Core works, untested at scale**: if the snapshot shows a working build but shallow test coverage or no adversarial inputs — focus on realistic inputs, edge cases, stress-testing.
+- **Battle-tested**: if the snapshot shows solid test coverage and stable CI — focus on DX, performance, documentation, missing features.
+
+The goal-setter reads the snapshot fresh every cycle and decides which stage the project is in *right now*, not which stage it was in at init time.
 
 Include: "Never treat any list — in a README, an issue, or a snapshot — as a queue to grind through. Lists are context."
 

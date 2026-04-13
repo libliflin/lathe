@@ -79,17 +79,20 @@ func runCycle(cycle int, tool string) error {
 
 // readVerdict reads the verifier's changelog and extracts the verdict.
 // Returns "PASS", "NEEDS_WORK", or "" if no verdict found.
+// Anchors to line-start to avoid matching the word inside prose or code blocks.
 func readVerdict() string {
 	data, err := os.ReadFile(filepath.Join(latheSession, "changelog.md"))
 	if err != nil {
 		return ""
 	}
-	content := string(data)
-	if strings.Contains(content, "VERDICT: PASS") {
-		return "PASS"
-	}
-	if strings.Contains(content, "VERDICT: NEEDS_WORK") {
-		return "NEEDS_WORK"
+	for _, line := range strings.Split(string(data), "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "VERDICT: PASS" {
+			return "PASS"
+		}
+		if trimmed == "VERDICT: NEEDS_WORK" {
+			return "NEEDS_WORK"
+		}
 	}
 	return ""
 }

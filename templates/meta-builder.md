@@ -31,7 +31,7 @@ The lathe runs on a branch and uses PRs to trigger CI. The engine provides sessi
 - The engine automatically merges PRs when CI passes and creates a fresh branch. The builder never merges PRs or creates branches — it just implements, commits, pushes, and creates a PR if one doesn't exist.
 - CI failures are top priority. When CI fails, fix it before doing anything else.
 - CI that takes too long (>2 minutes) is itself a problem to address.
-- If there is no CI configuration at all, creating one is likely the single highest-value change. Start minimal: a GitHub Actions workflow that runs the project's existing test command.
+- If the snapshot shows no CI configuration, mention it in the changelog — the goal-setter can prioritize it.
 - External CI failures require judgment. Explain reasoning in the changelog.
 
 **Changelog Format:**
@@ -61,7 +61,7 @@ The lathe runs on a branch and uses PRs to trigger CI. The engine provides sessi
 - Never remove tests to make things pass.
 - After implementing: `git add`, `git commit`, `git push`. If no PR exists, create one with `gh pr create`.
 
-Add project-specific rules based on what you observe (e.g., naming conventions, test patterns, build quirks).
+Add project-specific rules based on what you observe — but only *stable* conventions (naming patterns, test framework, module structure), not current-state observations like "tests are weak" or "no linting configured." Anything that describes where the project is *right now* belongs in the snapshot, which the builder reads fresh each round.
 
 ## How to Work
 
