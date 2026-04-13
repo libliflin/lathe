@@ -9,7 +9,7 @@ The core value proposition: lathe init identifies the stakeholders of a project 
 ## The Alignment Model
 
 1. **Identify who the project serves** — `lathe init` reads the project and discovers its real stakeholders, their journeys, and where those needs conflict.
-2. **Encode values** — init writes three behavioral docs (goal.md, builder.md, verifier.md) and skills that make the agents stakeholder-aware.
+2. **Encode values** — init writes a project-specific snapshot script, three behavioral docs (goal.md, builder.md, verifier.md), and skills that make the agents stakeholder-aware.
 3. **Provide ongoing direction** — `--theme` lets the user state a purpose for a session that biases decisions without overriding the stakeholder framework.
 4. **Maintain oversight** — every step is a git commit with a changelog that names who benefits and how.
 
@@ -17,22 +17,23 @@ The core value proposition: lathe init identifies the stakeholders of a project 
 
 Single Go binary with all templates embedded via `go:embed`. Builds for all platforms via GitHub Actions; self-updates via `lathe update`.
 
-**`lathe init`** — The alignment step. Runs three sequential AI calls, each producing a behavioral doc:
-1. `meta-goal.md` → `.lathe/goal.md` — stakeholder map, tensions, ranking guidance. Values manifesto spliced in.
-2. `meta-builder.md` → `.lathe/builder.md` — implementation quality, CI/PR workflow. Reads goal.md for alignment.
-3. `meta-verifier.md` → `.lathe/verifier.md` — adversarial verification themes. Reads builder.md for failure modes.
+**`lathe init`** — The alignment step. Runs four sequential AI calls:
+1. `meta-snapshot.md` → `.lathe/snapshot.sh` — project-specific state collection script. The agent reads the project and writes a snapshot tailored to its build/test/lint tools.
+2. `meta-goal.md` → `.lathe/goal.md` — stakeholder map, tensions, ranking guidance. Values manifesto spliced in.
+3. `meta-builder.md` → `.lathe/builder.md` — implementation quality, CI/PR workflow. Reads goal.md for alignment.
+4. `meta-verifier.md` → `.lathe/verifier.md` — adversarial verification themes. Reads builder.md for failure modes.
 
-Use `--agent=goal`, `--agent=builder`, or `--agent=verifier` to re-init just one role without touching the others.
+Use `--agent=snapshot`, `--agent=goal`, `--agent=builder`, or `--agent=verifier` to re-init just one role without touching the others.
 
 **`lathe start`** — The execution loop. One cycle = goal-setter + adaptive rounds of builder/verifier. The verifier writes a `VERDICT: PASS` or `VERDICT: NEEDS_WORK` in the changelog — PASS moves to the next goal, NEEDS_WORK loops the builder with the verifier's feedback. Max 4 rounds per goal as a safety cap. Each step follows identical plumbing: branch → snapshot → agent → safety net → PR → CI → merge → back to main. The engine is dumb plumbing; smart decisions live in the agent prompts.
 
 **Templates** — Embedded in the binary via `go:embed`, read-only:
+- `templates/meta-snapshot.md` — instructions for snapshot script generation
 - `templates/meta-goal.md` — instructions for goal-setter init
 - `templates/meta-builder.md` — instructions for builder init
 - `templates/meta-verifier.md` — instructions for verifier init
 - `templates/values-manifesto.md` — design intent, spliced into meta-goal.md via {{VALUES_MANIFESTO}}
 - `templates/interactive-preamble.md` — additional instructions for `--interactive` mode
-- `templates/*/snapshot.sh` — state collection scripts copied into `.lathe/` at init
 
 ## Key Principle
 
@@ -57,13 +58,12 @@ process.go                       — Process management (kill tree, find agent, 
 shell.go                         — Shell execution helpers (run, runCapture, runPipe)
 embed.go                         — go:embed for templates/
 templates/
+  meta-snapshot.md               — Instructions for snapshot script generation
   meta-goal.md                   — Instructions for goal-setter init
   meta-builder.md                — Instructions for builder init
   meta-verifier.md               — Instructions for verifier init
   values-manifesto.md            — Design intent, spliced into meta-goal.md
   interactive-preamble.md        — Interactive mode behavior
-  generic|go|rust/
-    snapshot.sh                  — State collection per project type
   skill/
     SKILL.md                     — Global Claude Code skill, installed to ~/.claude/skills/lathe/
 ```
@@ -100,13 +100,13 @@ templates/
 
 History lives inside `session/` (gitignored). The real audit trail is the squash merge commits on main.
 
-**`lathe init` (re-init)** wipes everything in `.lathe/` except `refs/` and regenerates all three behavioral docs. Use `--agent=X` to re-init just one role.
+**`lathe init` (re-init)** wipes everything in `.lathe/` except `refs/` and regenerates the snapshot script and all three behavioral docs. Use `--agent=X` to re-init just one role.
 
 **`lathe stop`** performs full teardown: kills the process tree, closes the PR, discards dirty working tree, checks out the base branch, deletes the local lathe branch, and wipes `session/`.
 
 ## Conventions
 
-- `snapshot.sh` uses `-count=1` on test commands — snapshots must reflect real state, not cache.
+- `snapshot.sh` is agent-generated at init time, tailored to the specific project. The meta-snapshot prompt teaches the agent to summarize (pass/fail counts, not raw output) and stay within the 6K char budget.
 - Skills files are project-specific, written by init. Not generic language references.
 - Refs files (`.lathe/refs/`) hold reference material the agents need. Loaded into every step's prompt alongside skills.
 - The engine uses `--dangerously-skip-permissions --print` for runtime. Init uses `-p` with `--allowedTools` for controlled writes.

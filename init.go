@@ -8,38 +8,6 @@ import (
 	"time"
 )
 
-func detectType() string {
-	if _, err := os.Stat("go.mod"); err == nil {
-		return "go"
-	}
-	if _, err := os.Stat("Cargo.toml"); err == nil {
-		return "rust"
-	}
-	if _, err := os.Stat("package.json"); err == nil {
-		return "node"
-	}
-	if _, err := os.Stat("requirements.txt"); err == nil {
-		return "python"
-	}
-	if _, err := os.Stat("pyproject.toml"); err == nil {
-		return "python"
-	}
-	entries, _ := filepath.Glob("*.yaml")
-	for _, e := range entries {
-		data, _ := os.ReadFile(e)
-		if strings.Contains(string(data), "apiVersion:") {
-			return "k8s"
-		}
-	}
-	entries, _ = filepath.Glob("*.yml")
-	for _, e := range entries {
-		data, _ := os.ReadFile(e)
-		if strings.Contains(string(data), "apiVersion:") {
-			return "k8s"
-		}
-	}
-	return "generic"
-}
 
 func generateAgentRole(role, tool string, interactive bool) error {
 	tpl, err := templatesFS.ReadFile("templates/meta-" + role + ".md")
@@ -65,10 +33,16 @@ func generateAgentRole(role, tool string, interactive bool) error {
 
 	logFile := filepath.Join(latheDir, "init-"+role+".log")
 
+	// Snapshot agent needs Bash to test the script it writes
+	allowedTools := "Read,Write,Edit,Glob,Grep"
+	if role == "snapshot" {
+		allowedTools = "Read,Write,Edit,Glob,Grep,Bash"
+	}
+
 	runAgent := func() (int, error) {
 		switch tool {
 		case "claude":
-			return runPipeQuiet(prompt, logFile, "claude", "-p", "--allowedTools", "Read,Write,Edit,Glob,Grep")
+			return runPipeQuiet(prompt, logFile, "claude", "-p", "--allowedTools", allowedTools)
 		case "amp":
 			return runPipeQuiet(prompt, logFile, "amp", "--dangerously-allow-all")
 		default:
@@ -79,7 +53,7 @@ func generateAgentRole(role, tool string, interactive bool) error {
 	if interactive {
 		switch tool {
 		case "claude":
-			return run("claude", prompt, "--allowedTools", "Read,Write,Edit,Glob,Grep")
+			return run("claude", prompt, "--allowedTools", allowedTools)
 		case "amp":
 			return run("amp", "--dangerously-allow-all")
 		default:
@@ -136,18 +110,12 @@ func spinner(role string) func() {
 }
 
 func cmdInit(args []string) {
-	projectType := ""
 	tool := "claude"
 	interactive := false
 	targetAgent := ""
 
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
-		case "--type":
-			i++
-			if i < len(args) {
-				projectType = args[i]
-			}
 		case "--tool":
 			i++
 			if i < len(args) {
@@ -168,23 +136,10 @@ func cmdInit(args []string) {
 	// Validate --agent
 	if targetAgent != "" {
 		switch targetAgent {
-		case "goal", "builder", "verifier":
+		case "snapshot", "goal", "builder", "verifier":
 		default:
-			die("Unknown agent role: %s (expected: goal, builder, verifier)", targetAgent)
+			die("Unknown agent role: %s (expected: snapshot, goal, builder, verifier)", targetAgent)
 		}
-	}
-
-	if projectType == "" {
-		projectType = detectType()
-		fmt.Printf("  Detected project type: %s\n", projectType)
-	}
-
-	// Check if embedded templates exist for this project type
-	snapshotPath := "templates/" + projectType + "/snapshot.sh"
-	if _, err := templatesFS.ReadFile(snapshotPath); err != nil {
-		fmt.Printf("  No template for '%s', falling back to generic\n", projectType)
-		projectType = "generic"
-		snapshotPath = "templates/generic/snapshot.sh"
 	}
 
 	// Targeted re-init
@@ -198,10 +153,16 @@ func cmdInit(args []string) {
 			die("%s agent generation failed: %v", targetAgent, err)
 		}
 
-		fmt.Printf("  Updated: %s/%s.md\n", latheDir, targetAgent)
+		if targetAgent == "snapshot" {
+			// Ensure snapshot.sh is executable
+			os.Chmod(filepath.Join(latheDir, "snapshot.sh"), 0755)
+			fmt.Printf("  Updated: %s/snapshot.sh\n", latheDir)
+		} else {
+			fmt.Printf("  Updated: %s/%s.md\n", latheDir, targetAgent)
+		}
 		fmt.Println()
 		fmt.Println("  Note: downstream agents may need re-init too.")
-		fmt.Println("  (goal → builder → verifier)")
+		fmt.Println("  (snapshot → goal → builder → verifier)")
 		return
 	}
 
@@ -227,14 +188,8 @@ func cmdInit(args []string) {
 	os.MkdirAll(filepath.Join(latheDir, "skills"), 0755)
 	os.MkdirAll(filepath.Join(latheDir, "refs"), 0755)
 
-	// Copy snapshot from embedded FS
-	snapshotDst := filepath.Join(latheDir, "snapshot.sh")
-	if data, err := templatesFS.ReadFile(snapshotPath); err == nil {
-		os.WriteFile(snapshotDst, data, 0755)
-	}
-
-	// Generate three agent roles in sequence
-	roles := []string{"goal", "builder", "verifier"}
+	// Generate snapshot + three agent roles in sequence
+	roles := []string{"snapshot", "goal", "builder", "verifier"}
 	for _, role := range roles {
 		if err := generateAgentRole(role, tool, interactive); err != nil {
 			fmt.Println()
@@ -262,15 +217,20 @@ func cmdInit(args []string) {
 		}
 	}
 
+	// Ensure snapshot.sh is executable
+	os.Chmod(filepath.Join(latheDir, "snapshot.sh"), 0755)
+
 	// Validate
-	if _, err := os.Stat(filepath.Join(latheDir, "goal.md")); os.IsNotExist(err) {
-		fmt.Println()
-		fmt.Println("  ERROR: Agent generation produced unusable output.")
-		fmt.Println("  The AI ran but didn't produce a valid goal.md.")
-		if !reinit {
-			os.RemoveAll(latheDir)
+	for _, required := range []string{"snapshot.sh", "goal.md"} {
+		if _, err := os.Stat(filepath.Join(latheDir, required)); os.IsNotExist(err) {
+			fmt.Println()
+			fmt.Printf("  ERROR: Agent generation produced unusable output.\n")
+			fmt.Printf("  Missing: %s/%s\n", latheDir, required)
+			if !reinit {
+				os.RemoveAll(latheDir)
+			}
+			os.Exit(1)
 		}
-		os.Exit(1)
 	}
 
 	fmt.Println("  Agents generated via " + tool + ".")

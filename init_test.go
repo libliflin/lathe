@@ -6,52 +6,6 @@ import (
 	"testing"
 )
 
-func TestDetectType(t *testing.T) {
-	dir := t.TempDir()
-	orig, _ := os.Getwd()
-	os.Chdir(dir)
-	defer os.Chdir(orig)
-
-	// No files → generic
-	if got := detectType(); got != "generic" {
-		t.Errorf("empty dir: got %q, want %q", got, "generic")
-	}
-
-	// go.mod → go
-	os.WriteFile("go.mod", []byte("module test"), 0644)
-	if got := detectType(); got != "go" {
-		t.Errorf("go.mod: got %q, want %q", got, "go")
-	}
-	os.Remove("go.mod")
-
-	// Cargo.toml → rust
-	os.WriteFile("Cargo.toml", []byte("[package]"), 0644)
-	if got := detectType(); got != "rust" {
-		t.Errorf("Cargo.toml: got %q, want %q", got, "rust")
-	}
-	os.Remove("Cargo.toml")
-
-	// package.json → node
-	os.WriteFile("package.json", []byte("{}"), 0644)
-	if got := detectType(); got != "node" {
-		t.Errorf("package.json: got %q, want %q", got, "node")
-	}
-	os.Remove("package.json")
-
-	// requirements.txt → python
-	os.WriteFile("requirements.txt", []byte("flask"), 0644)
-	if got := detectType(); got != "python" {
-		t.Errorf("requirements.txt: got %q, want %q", got, "python")
-	}
-	os.Remove("requirements.txt")
-
-	// k8s yaml
-	os.WriteFile("deploy.yaml", []byte("apiVersion: apps/v1"), 0644)
-	if got := detectType(); got != "k8s" {
-		t.Errorf("k8s yaml: got %q, want %q", got, "k8s")
-	}
-	os.Remove("deploy.yaml")
-}
 
 func TestEnsureGitignore(t *testing.T) {
 	dir := t.TempDir()
