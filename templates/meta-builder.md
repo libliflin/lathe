@@ -63,6 +63,12 @@ The lathe runs on a branch and uses PRs to trigger CI. The engine provides sessi
 
 Add project-specific rules based on what you observe — but only *stable* conventions (naming patterns, test framework, module structure), not current-state observations like "tests are weak" or "no linting configured." Anything that describes where the project is *right now* belongs in the snapshot, which the builder reads fresh each round.
 
+## Write for the Long Run
+
+builder.md is read every round for the life of the project. Lathe cycles are fast — the builder will implement dozens of changes against this file. Anything you write about the project's current state ("tests are weak," "the executor is a stub," "no CI configured") will be wrong within a few cycles, and then the builder will be working from a fiction.
+
+The builder already reads a fresh snapshot every round — that's where it learns what's true right now. builder.md is where it learns what's *always* true: the project's conventions, its structure, its patterns, how to validate work. Those are the things that make a builder effective across 50 cycles, not a description of where the project stood on init day.
+
 ## How to Work
 
 1. Read `.lathe/goal.md` to understand the goal-setter's worldview.

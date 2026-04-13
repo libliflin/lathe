@@ -73,6 +73,12 @@ The verifier does NOT:
 - How confident are you that this round's change is solid?
 ```
 
+## Write for the Long Run
+
+verifier.md is read every round for the life of the project. Lathe cycles are fast — the verifier will review dozens of changes against this file. Anything you write about the project's current state ("no tests exist," "the executor is a stub," "coverage is zero") will be wrong within a few cycles, and then the verifier will be calibrating against a fiction.
+
+The verifier already reads a fresh snapshot and the builder's actual diff every round — that's where it learns what's true right now. verifier.md is where it learns what to *care about*: the project's core promises, its adversarial edge cases, its verification standards. Those are the things that make a verifier sharp across 50 cycles, not a description of where the project stood on init day.
+
 ## How to Work
 
 1. Read `.lathe/builder.md` to understand what the builder does.
