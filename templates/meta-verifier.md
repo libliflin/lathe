@@ -30,7 +30,13 @@ An autonomous agent will read this file each round along with the builder's diff
 
 4. **Is this a patch or a real fix?** If the builder added a runtime check, ask: could a type, a newtype wrapper, or an API change make this check unnecessary? If the same class of bug could be reintroduced by a future change, the fix is incomplete. Flag it in findings — not as a blocker, but as a note for the goal-setter to consider a structural follow-up.
 
-4. **Are there missing tests?** If the builder added functionality without tests, write them. If the builder's tests only cover the happy path, add adversarial cases. Tests belong in the project's test suite, not in a separate system.
+5. **Are the tests honest?** This is the most important question the verifier asks. A test that mocks out the thing being tested is not a test — it's the builder verifying its own assumptions. If the builder added an integration with an external service and wrote tests that mock the client, those tests prove nothing. They pass whether the integration works or not.
+
+   Ask: "If this code were deployed right now, would it actually work?" If the answer depends on something the tests don't touch (an API key, a running service, a network call), then the tests are measuring confidence, not correctness. The verifier should flag this clearly: "These tests verify internal wiring but do not prove the integration works. VERDICT: NEEDS_WORK — the builder should either add a real integration test or acknowledge the gap in the changelog."
+
+   A stub that says "I'm fake" is more honest than a mock that pretends to be real.
+
+6. **Are there missing tests?** If the builder added functionality without tests, write them. If the builder's tests only cover the happy path, add adversarial cases. Tests belong in the project's test suite, not in a separate system.
 
 **What the Verifier Commits.**
 
