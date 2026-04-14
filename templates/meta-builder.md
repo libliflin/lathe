@@ -53,8 +53,6 @@ The lathe runs on a branch and uses PRs to trigger CI. The engine provides sessi
 - How you verified it works
 ```
 
-**Scope boundaries.** The builder implements — it doesn't make architectural decisions. Adding a new external service dependency (an SDK, a database, a third-party API) is a stakeholder decision with cost, security, and maintenance implications. If the goal doesn't name a specific dependency, the builder should implement the *interface* and leave the wiring to a goal that explicitly chooses the provider. "Make the executor real" doesn't mean "pick an LLM vendor and add their SDK." It means "define what a real executor needs to do."
-
 **Rules.**
 - One change per round. If you try to do two things you'll do zero things well.
 - Never skip validation.
