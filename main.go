@@ -17,6 +17,7 @@ var (
 	latheSkills  string
 	pidFile      string
 	sessionFile  string
+	frictionFile string
 
 	ciWaitTimeout    = 300   // seconds
 	roundsPerCycle   = 4
@@ -30,6 +31,7 @@ func initPaths() {
 	latheSkills = filepath.Join(latheDir, "skills")
 	pidFile = filepath.Join(latheSession, "lathe.pid")
 	sessionFile = filepath.Join(latheSession, "session.json")
+	frictionFile = filepath.Join(latheSession, "friction.md")
 }
 
 // logWriter is where log() writes. Defaults to stderr, but engineStart

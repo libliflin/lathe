@@ -22,6 +22,16 @@ func runCycle(cycle int, tool string) error {
 	fmt.Println("═══════════════════════════════════════════════")
 	fmt.Println()
 
+	// --- Stakeholder Sim ---
+	// Simulates one stakeholder's experience and writes a friction report.
+	// The goal-setter reads this report to pick what to fix.
+	waitForRateLimit()
+	setCycle(cycle, "sim")
+	collectSnapshot()
+	if err := runSim(cycle, tool); err != nil {
+		log("Sim step failed: %v — continuing without friction report.", err)
+	}
+
 	// --- Goal Setter ---
 	if err := runStep(cycle, "goal", tool, func() error {
 		return runGoalSetter(cycle, tool)
