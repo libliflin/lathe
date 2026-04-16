@@ -8,6 +8,45 @@ import (
 	"strings"
 )
 
+func runSim(cycle int, tool string) error {
+	log("Running stakeholder sim (cycle %d) ...", cycle)
+
+	var b strings.Builder
+
+	// Stakeholder map from goal.md
+	b.WriteString("---\n# Stakeholder Map\n\n")
+	b.WriteString(readFileOr(filepath.Join(latheDir, "goal.md"), "(no stakeholder map found)"))
+	b.WriteString("\n\n")
+
+	// Common: skills, refs, theme, snapshot
+	b.WriteString(assembleCommon())
+
+	// Session context
+	b.WriteString(assembleSessionContext())
+
+	// Instructions
+	b.WriteString("---\n# Your Task: Stakeholder Friction Report\n\n")
+	b.WriteString("You are a friction reporter. Pick one stakeholder from the map above.\n\n")
+	b.WriteString("Simulate their experience encountering this project right now, based on the snapshot:\n")
+	b.WriteString("- What would they try to do first?\n")
+	b.WriteString("- What would work? What would fail or confuse them?\n")
+	b.WriteString("- What question would they have that nothing answers?\n\n")
+	b.WriteString("This is a simulation, not an analysis. Write as if you just watched someone use the project.\n")
+	b.WriteString("Be specific and honest — vague praise is useless. Short and concrete is better than long and general.\n\n")
+	b.WriteString("Write your findings to `.lathe/session/friction.md` in this format:\n\n")
+	b.WriteString("```\n# Friction Report — Cycle N\n\n")
+	b.WriteString("## Stakeholder: <name>\n\n")
+	b.WriteString("## What they tried\n(their goal, in their terms)\n\n")
+	b.WriteString("## What worked\n(be honest — partial credit counts)\n\n")
+	b.WriteString("## Where they got stuck\n(specific friction point, not generic critique)\n\n")
+	b.WriteString("## Their question\n(the one thing they'd want answered that the project doesn't answer right now)\n")
+	b.WriteString("```\n\n")
+	b.WriteString(fmt.Sprintf("Replace `Cycle N` with `Cycle %d`.\n\n", cycle))
+	b.WriteString("Do NOT commit anything. Do NOT create a PR. Just write the friction.md file.\n")
+
+	return invokeAgent(b.String(), cycle, "sim", tool)
+}
+
 func runGoalSetter(cycle int, tool string) error {
 	log("Running goal-setter (cycle %d) ...", cycle)
 
@@ -19,6 +58,13 @@ func runGoalSetter(cycle int, tool string) error {
 
 	// Common: skills, refs, theme, snapshot
 	b.WriteString(assembleCommon())
+
+	// Stakeholder friction report from the sim step (if any)
+	if data, err := os.ReadFile(frictionFile); err == nil && len(data) > 0 {
+		b.WriteString("---\n# Stakeholder Friction Report (this cycle)\n\n")
+		b.Write(data)
+		b.WriteString("\n\n")
+	}
 
 	// Session context
 	b.WriteString(assembleSessionContext())

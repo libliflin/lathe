@@ -22,6 +22,14 @@ func runCycle(cycle int, tool string) error {
 	fmt.Println("═══════════════════════════════════════════════")
 	fmt.Println()
 
+	// --- Stakeholder Sim ---
+	// Run before goal-setter; failure is non-fatal (goal-setter still runs, just without a friction report).
+	waitForRateLimit()
+	collectSnapshot()
+	if err := runSim(cycle, tool); err != nil {
+		log("Sim failed (non-fatal): %v", err)
+	}
+
 	// --- Goal Setter ---
 	if err := runStep(cycle, "goal", tool, func() error {
 		return runGoalSetter(cycle, tool)

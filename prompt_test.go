@@ -88,3 +88,55 @@ func TestAssembleSessionContextDirect(t *testing.T) {
 		t.Error("expected direct mode context")
 	}
 }
+
+// assembleFrictionBlock mirrors the friction-inclusion logic in runGoalSetter.
+// It's extracted here so we can test the behaviour without invoking an LLM.
+func assembleFrictionBlock() string {
+	var b strings.Builder
+	if data, err := os.ReadFile(frictionFile); err == nil && len(data) > 0 {
+		b.WriteString("---\n# Stakeholder Friction Report (this cycle)\n\n")
+		b.Write(data)
+		b.WriteString("\n\n")
+	}
+	return b.String()
+}
+
+func TestFrictionIncludedWhenPresent(t *testing.T) {
+	setupTestState(t)
+
+	content := "## Stakeholder: Developer\n\nGot stuck on missing docs."
+	if err := os.WriteFile(frictionFile, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result := assembleFrictionBlock()
+	if !strings.Contains(result, "# Stakeholder Friction Report (this cycle)") {
+		t.Error("expected friction section header")
+	}
+	if !strings.Contains(result, "Got stuck on missing docs.") {
+		t.Error("expected friction file content")
+	}
+}
+
+func TestFrictionOmittedWhenAbsent(t *testing.T) {
+	setupTestState(t)
+	// frictionFile does not exist
+
+	result := assembleFrictionBlock()
+	if strings.Contains(result, "Friction Report") {
+		t.Error("expected no friction section when file is absent")
+	}
+}
+
+func TestFrictionOmittedWhenEmpty(t *testing.T) {
+	setupTestState(t)
+
+	if err := os.WriteFile(frictionFile, []byte(""), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result := assembleFrictionBlock()
+	if strings.Contains(result, "Friction Report") {
+		t.Error("expected no friction section when file is empty")
+	}
+}

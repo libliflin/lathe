@@ -18,6 +18,7 @@ func setupTestState(t *testing.T) string {
 	goalHistory = filepath.Join(latheSession, "goal-history")
 	sessionFile = filepath.Join(latheSession, "session.json")
 	latheSkills = filepath.Join(latheDir, "skills")
+	frictionFile = filepath.Join(latheSession, "friction.md")
 
 	os.MkdirAll(latheSession, 0755)
 	os.MkdirAll(latheHistory, 0755)
