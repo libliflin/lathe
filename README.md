@@ -1,23 +1,37 @@
 # Lathe
 
-An autonomous code-improvement loop. Point it at a repo, and it runs repeating cycles: a goal-setter picks the highest-value change, a builder implements it, a verifier checks the work and tightens gaps.
+An autonomous code-improvement loop. Point it at a repo, and it runs repeating cycles driven by real stakeholder experiences — not backlogs, not story points, not groomed lists of work.
 
-Lathe is an opinionated take on the alignment problem for autonomous coding agents. Instead of asking one agent "what should you do?", `lathe init` identifies *who the project serves* and encodes their needs into three specialized agents. Every cycle asks: **which stakeholder's experience can I make noticeably better right now?**
+Lathe is an opinionated take on the alignment problem for autonomous coding agents. Instead of asking "what should we build next?", lathe simulates real stakeholder experiences, discovers where the project fails them, and fixes the most important friction. Every cycle asks: **what's the worst experience a real stakeholder is having right now?**
 
 ## The Alignment Model
 
-1. **Identify who the project serves.** `lathe init` reads the project deeply and discovers its real stakeholders — the actual people who use, build on, or operate this code — along with where their needs conflict.
-2. **Encode values.** Init writes three behavioral docs (`goal.md`, `builder.md`, `verifier.md`) and skills that make the agents stakeholder-aware from the first cycle.
-3. **Provide direction.** `--theme` lets you state a purpose for a session ("get the CLI working end-to-end") that biases decisions without overriding the stakeholder framework.
-4. **Maintain oversight.** Every step is a git commit (and, in branch mode, a squash-merged PR) with a changelog naming who benefits and how.
+1. **Identify who the project serves.** `lathe init` reads the project and discovers its real stakeholders — the actual people who use, build on, or operate this code.
+2. **Experience the project as they would.** Each cycle, a stakeholder simulation tries to use the project from a clean workspace, following their real journey. No insider knowledge. Black-box.
+3. **Champion their needs.** A stakeholder champion watches the simulation, takes notes, and picks the single most impactful friction point — filtered through the session's theme and project scope.
+4. **Build until it's fixed.** The builder and verifier loop with full autonomy to refactor, prototype, and experiment until the stakeholder's experience is genuinely better.
+5. **Maintain oversight.** Every step is a git commit with a changelog. The real audit trail is the squash-merge commits on main.
 
-## Three Roles
+## The Loop
 
-**Goal-setter** — The values agent. Reads the project snapshot, stakeholder map, and last 4 goals. Picks the single highest-value change. Commits a goal file. Doesn't implement — decides.
+**Stakeholder sim** — A simulated stakeholder tries to use the project. Clean workspace, no insider knowledge, following their real journey. Hits real friction. Reports what happened.
 
-**Builder** — The implementer. Reads the goal and snapshot. Makes one focused change: implement, validate, commit. Follows the project's patterns.
+**Stakeholder champion** — Watches the simulation, understands the friction, keeps project scope and theme in mind. Picks the one thing that matters most. Translates stakeholder pain into an actionable goal. Friendly, empathetic, service-oriented — the stakeholder's advocate inside the development process.
 
-**Verifier** — The adversarial reviewer. Reads the builder's diff against the goal. Asks: did the builder do what was asked? What could break? Commits real fixes — tests, edge cases, error handling.
+**Builder** — The engineer. Has full autonomy over technical decisions — refactoring, tooling, prototyping, whatever it takes to fix the friction. Makes the tool to make the change easy, then makes the easy change. Owns the how, not the what.
+
+**Verifier** — Two jobs. First: bridge between internal quality and external experience — did the builder actually fix the stakeholder's friction? Second: owns the non-negotiable floor — security, performance, reliability. The sim surfaces what to build; the verifier ensures it's built to a standard. The builder doesn't get to trade security for features or ship something 10x slower. Has empathy for both the builder's technical choices and the stakeholder's needs.
+
+The builder and verifier loop until the friction is resolved. Cycles are no longer small one-off stories — they're as big as the problem requires.
+
+## Where This Is Heading (Workshop)
+
+The model above is aspirational. The current implementation still uses the older goal-setter/builder/verifier pattern (see Architecture below). Key open questions we're workshopping:
+
+- **Stakeholder simulation design.** The sim IS the prioritization engine — there is no backlog, no priority matrix. The sim must cover functional use, performance, trust evaluation, competitive assessment, integration scenarios, and long-term reliability. Stakeholder experiences aren't just "try feature X and it breaks" — they include evaluating whether to trust this project, waiting too long for a result, or trying to integrate with the API. If the sim can't surface a problem, the problem doesn't get prioritized. (See [workshop doc](docs/next-session-prompt.md) for full breakdown.)
+- **Champion role.** Relational, not analytical. The stakeholder's advocate inside the process.
+- **Cycle scope.** Bigger cycles with more builder autonomy. What are the right safety caps?
+- **No backlog.** Priority is discovered live each cycle. No grooming, no maintenance.
 
 ## Two Phases
 

@@ -1,0 +1,8 @@
+Written to `.lathe/builder.md`. Key decisions made:
+
+- **Aligned with goal.md's stakeholder framing** — the builder is told to understand which stakeholder a goal serves before touching code, mirroring how the goal-setter thinks
+- **Class-of-problem thinking** — matches goal.md's "Think in Classes, Not Instances" section; the builder asks the same question at implementation time
+- **Project-specific conventions** — single `package main`, no sub-packages, `shell.go` helpers, `filepath.Join`, platform boundaries (setsid split, Linux CI vs macOS dev)
+- **Prompt injection invariant** — explicitly preserved since the domains.md called it out as a live threat
+- **Smart decisions in prompts** — the builder knows not to put decision logic in engine code, keeping the architecture clean for the future sim model
+- **Stable conventions only** — nothing about current project state; the builder reads the snapshot fresh each round for that
