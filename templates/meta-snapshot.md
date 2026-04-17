@@ -53,7 +53,7 @@ Read the project and decide which of these apply. Don't include sections that do
 
 ## Bootstrap Test Infrastructure
 
-When the project has no test files, add one before moving on. A tests section gains its value when there's a test to run, and the agents gain a real health signal from it each cycle.
+If the project has no test files, don't just report "no tests found" and move on. The snapshot's tests section is useless without a test to run, and the agents lose a critical health signal.
 
 Find the most logical place for a test file (next to the most important source file, following the project's conventions), and add a single tautological test — something like `test('sanity', () => expect(true).toBe(true))`. The point isn't to test anything real yet; it's to prove the test runner works, give the snapshot something to report, and give the builder a pattern to follow when adding real tests.
 
