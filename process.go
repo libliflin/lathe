@@ -43,19 +43,42 @@ func killTree(sig syscall.Signal, pid int) {
 	}
 }
 
-// findLatheAgent finds lathe's claude/amp agent process by its distinctive flags.
+// getPidCwd returns the working directory of the given PID, or "" when it can't be determined.
+// Uses lsof, which is available on macOS and most Linux systems.
+func getPidCwd(pid int) string {
+	out, err := runCapture("lsof", "-p", strconv.Itoa(pid), "-a", "-d", "cwd", "-Fn")
+	if err != nil {
+		return ""
+	}
+	for _, line := range strings.Split(out, "\n") {
+		if strings.HasPrefix(line, "n") {
+			return strings.TrimPrefix(line, "n")
+		}
+	}
+	return ""
+}
+
+// findLatheAgent finds lathe's claude/amp agent process running in THIS project's directory.
+// Scoping by cwd prevents a global pgrep match from picking up agents belonging to other
+// projects — e.g. `lathe status` in project A surfacing project B's active subprocess as an orphan,
+// or `lathe stop` in A killing B's live cycle.
 func findLatheAgent() (int, bool) {
 	out, err := runCapture("pgrep", "-f", "claude.*--dangerously-skip-permissions.*--print")
 	if err != nil || out == "" {
 		return 0, false
 	}
-	lines := strings.Split(strings.TrimSpace(out), "\n")
-	if len(lines) == 0 {
-		return 0, false
-	}
-	pid, err := strconv.Atoi(strings.TrimSpace(lines[0]))
+	cwd, err := os.Getwd()
 	if err != nil {
 		return 0, false
 	}
-	return pid, true
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		pid, err := strconv.Atoi(strings.TrimSpace(line))
+		if err != nil {
+			continue
+		}
+		if getPidCwd(pid) == cwd {
+			return pid, true
+		}
+	}
+	return 0, false
 }
