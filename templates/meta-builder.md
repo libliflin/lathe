@@ -18,13 +18,13 @@ An autonomous agent will read this file each round along with a goal and a proje
 
 **Implementation Quality.**
 - Read the goal carefully. Understand *what* is being asked and *why* (which stakeholder benefits).
-- Implement exactly what the goal asks for. Don't scope-creep, don't add extras, don't refactor nearby code unless the goal specifically asks for it.
-- Validate your change. Run tests, check the build, verify the change actually does what the goal says.
-- If the goal is unclear or impossible given the current project state, do your best interpretation and explain your reasoning in the changelog.
+- Implement exactly what the goal asks for. When you spot adjacent work that would help, note it in the changelog for the goal-setter to pick up next cycle.
+- Validate your change. Run tests, check the build, confirm the change does what the goal says.
+- When the goal is unclear or impossible given the current project state, pick the best interpretation you can justify and explain your reasoning in the changelog.
 
 **Solve the general problem.** When implementing a fix, ask: "Am I patching one instance, or eliminating the class of error?" Prefer structural solutions — types that make invalid states unrepresentable, APIs that can't be misused, invariants enforced by the compiler rather than by convention. If you're adding a runtime check, consider whether a type change would make the check unnecessary. The best implementation is one where the bug can't be reintroduced because the language prevents it.
 
-**Leave it witnessable.** The verifier runs the Verification Playbook in `.lathe/verifier.md` and exercises your change end-to-end — it does not just read the diff. Make sure the change is reachable from the outside: a new route is navigable, a new CLI flag surfaces when the binary runs, a new library export is importable from the built artifact, a new page is linked from somewhere a user would arrive from. In your changelog's "Validated" section, tell the verifier where to look — the URL, the command, the import path, the entry point — so it doesn't have to guess. If the change has no outside-visible signal (pure internal refactor), say so explicitly so the verifier doesn't spend a round hunting for one.
+**Leave it witnessable.** The verifier runs the Verification Playbook in `.lathe/verifier.md` and exercises your change end-to-end. Make the change reachable from the outside: a new route is navigable, a new CLI flag surfaces when the binary runs, a new library export is importable from the built artifact, a new page is linked from somewhere a user would arrive from. In your changelog's "Validated" section, point the verifier at where to look — the URL, the command, the import path, the entry point — so it can head straight there. When the change is a pure internal refactor with no outside-visible signal, say so in the changelog and name the closest user-visible surface that confirms it still works.
 
 **Working with CI/CD and PRs.**
 
@@ -56,20 +56,20 @@ The lathe runs on a branch and uses PRs to trigger CI. The engine provides sessi
 ```
 
 **Rules.**
-- One change per round. If you try to do two things you'll do zero things well.
-- Never skip validation.
-- Respect existing patterns in the codebase.
-- If tests break because of your change, fix them as part of this round — don't leave broken tests.
-- Never remove tests to make things pass.
+- One change per round — focus produces a round that lands.
+- Always validate before you push.
+- Follow the codebase's existing patterns.
+- When tests break because of your change, fix them as part of this round so the round lands clean.
+- Never remove tests to make things pass. When a test is wrong, fix the test and explain why in the changelog.
 - After implementing: `git add`, `git commit`, `git push`. If no PR exists, create one with `gh pr create`.
 
-Add project-specific rules based on what you observe — but only *stable* conventions (naming patterns, test framework, module structure), not current-state observations like "tests are weak" or "no linting configured." Anything that describes where the project is *right now* belongs in the snapshot, which the builder reads fresh each round.
+Add project-specific rules based on what you observe — but only *stable* conventions (naming patterns, test framework, module structure). Anything that describes where the project is *right now* ("tests are weak," "no linting configured") belongs in the snapshot, which the builder reads fresh each round.
 
 ## Write for the Long Run
 
-builder.md is read every round for the life of the project. Lathe cycles are fast — the builder will implement dozens of changes against this file. Anything you write about the project's current state ("tests are weak," "the executor is a stub," "no CI configured") will be wrong within a few cycles, and then the builder will be working from a fiction.
+builder.md is read every round for the life of the project. Lathe cycles are fast — the builder will implement dozens of changes against this file. Write the parts that stay true across cycles: the project's conventions, its structure, its patterns, how to validate work. Leave out anything describing current state ("tests are weak," "the executor is a stub," "no CI configured") — the builder reads a fresh snapshot every round for what's true right now.
 
-The builder already reads a fresh snapshot every round — that's where it learns what's true right now. builder.md is where it learns what's *always* true: the project's conventions, its structure, its patterns, how to validate work. Those are the things that make a builder effective across 50 cycles, not a description of where the project stood on init day.
+What makes a builder effective across 50 cycles is a durable sense of *how this project is built* — not a description of where it stood on init day.
 
 ## How to Work
 
