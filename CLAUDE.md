@@ -17,19 +17,21 @@ The core value proposition: lathe init identifies the stakeholders of a project 
 
 Single Go binary with all templates embedded via `go:embed`. Builds for all platforms via GitHub Actions; self-updates via `lathe update`.
 
-**`lathe init`** — The alignment step. Runs four sequential AI calls:
+**`lathe init`** — The alignment step. Runs five sequential AI calls:
 1. `meta-snapshot.md` → `.lathe/snapshot.sh` — project-specific state collection script. The agent reads the project and writes a snapshot tailored to its build/test/lint tools.
 2. `meta-goal.md` → `.lathe/goal.md` — stakeholder map, tensions, ranking guidance. Values manifesto spliced in.
-3. `meta-builder.md` → `.lathe/builder.md` — implementation quality, CI/PR workflow. Reads goal.md for alignment.
-4. `meta-verifier.md` → `.lathe/verifier.md` — adversarial verification themes. Reads builder.md for failure modes.
+3. `meta-brand.md` → `.lathe/brand.md` — the project's character, cited from real signals (errors, README, CLI output). Loaded into every runtime prompt as a tint on decisions.
+4. `meta-builder.md` → `.lathe/builder.md` — implementation quality, CI/PR workflow. Reads goal.md for alignment.
+5. `meta-verifier.md` → `.lathe/verifier.md` — adversarial verification themes. Reads builder.md for failure modes.
 
-Use `--agent=snapshot`, `--agent=goal`, `--agent=builder`, or `--agent=verifier` to re-init just one role without touching the others.
+Use `--agent=snapshot`, `--agent=goal`, `--agent=brand`, `--agent=builder`, or `--agent=verifier` to re-init just one role without touching the others.
 
 **`lathe start`** — The execution loop. One cycle = goal-setter + adaptive rounds of builder/verifier. The verifier writes a `VERDICT: PASS` or `VERDICT: NEEDS_WORK` in the changelog — PASS moves to the next goal, NEEDS_WORK loops the builder with the verifier's feedback. Max 4 rounds per goal as a safety cap. Each step follows identical plumbing: branch → snapshot → agent → safety net → PR → CI → merge → back to main. The engine is dumb plumbing; smart decisions live in the agent prompts.
 
 **Templates** — Embedded in the binary via `go:embed`, read-only:
 - `templates/meta-snapshot.md` — instructions for snapshot script generation
 - `templates/meta-goal.md` — instructions for goal-setter init
+- `templates/meta-brand.md` — instructions for brand init (character, voice, edge-case behavior)
 - `templates/meta-builder.md` — instructions for builder init
 - `templates/meta-verifier.md` — instructions for verifier init
 - `templates/values-manifesto.md` — design intent, spliced into meta-goal.md via {{VALUES_MANIFESTO}}
@@ -60,6 +62,7 @@ embed.go                         — go:embed for templates/
 templates/
   meta-snapshot.md               — Instructions for snapshot script generation
   meta-goal.md                   — Instructions for goal-setter init
+  meta-brand.md                  — Instructions for brand init (project character)
   meta-builder.md                — Instructions for builder init
   meta-verifier.md               — Instructions for verifier init
   values-manifesto.md            — Design intent, spliced into meta-goal.md
@@ -74,6 +77,7 @@ templates/
 
 ```
 .lathe/goal.md               — Goal-setter behavioral instructions, stakeholder map
+.lathe/brand.md              — Project character (voice, edge-case behavior). Loaded into every runtime prompt.
 .lathe/builder.md            — Builder behavioral instructions
 .lathe/verifier.md           — Verifier behavioral instructions
 .lathe/alignment-summary.md  — Plain-English summary of alignment decisions

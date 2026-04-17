@@ -150,9 +150,9 @@ func cmdInit(args []string) {
 	// Validate --agent
 	if targetAgent != "" {
 		switch targetAgent {
-		case "snapshot", "goal", "builder", "verifier":
+		case "snapshot", "goal", "brand", "builder", "verifier":
 		default:
-			die("Unknown agent role: %s (expected: snapshot, goal, builder, verifier)", targetAgent)
+			die("Unknown agent role: %s (expected: snapshot, goal, brand, builder, verifier)", targetAgent)
 		}
 	}
 
@@ -176,7 +176,7 @@ func cmdInit(args []string) {
 		}
 		fmt.Println()
 		fmt.Println("  Note: downstream agents may need re-init too.")
-		fmt.Println("  (snapshot → goal → builder → verifier)")
+		fmt.Println("  (snapshot → goal → brand → builder → verifier)")
 		return
 	}
 
@@ -202,8 +202,9 @@ func cmdInit(args []string) {
 	os.MkdirAll(filepath.Join(latheDir, "skills"), 0755)
 	os.MkdirAll(filepath.Join(latheDir, "refs"), 0755)
 
-	// Generate snapshot + three agent roles in sequence
-	roles := []string{"snapshot", "goal", "builder", "verifier"}
+	// Generate snapshot + four agent roles in sequence.
+	// Ordering matters: brand reads goal.md's stakeholder map; builder and verifier read brand.md.
+	roles := []string{"snapshot", "goal", "brand", "builder", "verifier"}
 	for _, role := range roles {
 		if err := generateAgentRole(role, tool, interactive); err != nil {
 			fmt.Println()
@@ -256,11 +257,12 @@ func cmdInit(args []string) {
 	installSkill()
 
 	if reinit {
-		fmt.Println("  Updated: goal.md, builder.md, verifier.md, snapshot.sh, skills")
+		fmt.Println("  Updated: goal.md, brand.md, builder.md, verifier.md, snapshot.sh, skills")
 	} else {
 		fmt.Printf("  Created: %s/\n", latheDir)
 	}
 	fmt.Printf("  Goal:    %s/goal.md\n", latheDir)
+	fmt.Printf("  Brand:   %s/brand.md\n", latheDir)
 	fmt.Printf("  Builder: %s/builder.md\n", latheDir)
 	fmt.Printf("  Verify:  %s/verifier.md\n", latheDir)
 	fmt.Printf("  Skills:  %s/skills/\n", latheDir)

@@ -26,6 +26,19 @@ An autonomous agent will read this file each round along with a goal and a proje
 
 **Leave it witnessable.** The verifier runs the Verification Playbook in `.lathe/verifier.md` and exercises your change end-to-end. Make the change reachable from the outside: a new route is navigable, a new CLI flag surfaces when the binary runs, a new library export is importable from the built artifact, a new page is linked from somewhere a user would arrive from. In your changelog's "Validated" section, point the verifier at where to look — the URL, the command, the import path, the entry point — so it heads straight there. When the change is a pure internal refactor with no outside-visible signal, name the closest user-visible surface that confirms the behavior still holds, so the verifier heads straight there.
 
+**Apply brand on tone-sensitive surfaces.** Each cycle's prompt carries `.lathe/brand.md` — the project's character. When your change touches a surface where the project speaks to its users, match the character:
+
+- Error messages and failure output
+- CLI output, help text, `--help` strings
+- README and docs changes
+- Commit messages
+- Log messages the user sees
+- Names (commands, flags, public functions that users call)
+
+Brand is a tint, not a constraint. Correctness comes first; tone comes second. When two phrasings are equally correct, pick the one that sounds like the project. When brand.md is in emergent mode, fall back to matching the surrounding code's existing tone.
+
+For pure-mechanical changes (internal refactors, dependency bumps, test infrastructure) brand doesn't apply — get the code right and move on.
+
 **Working with CI/CD and PRs.**
 
 The lathe runs on a branch and uses PRs to trigger CI. The engine provides session context (current branch, PR number, CI status) in the prompt each round. Include guidance for the builder on how to work within this model:
