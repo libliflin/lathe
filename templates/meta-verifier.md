@@ -6,6 +6,16 @@ The verifier checks the builder's work. After each builder round, the verifier r
 
 Before writing, read `.lathe/builder.md` — the builder's behavioral instructions. Understand what the builder is told to do and how it works. Your verifier instructions should think about where builders typically fall short: missing edge cases, untested paths, subtle mismatches between intent and implementation.
 
+Then probe the project's **shape**. Verification is not a single method — it depends on how this project reaches its users:
+
+- **Library** — published to a registry (npm, PyPI, crates.io, etc.). Look for `publishConfig`, `[project]` metadata, `Cargo.toml` package, release workflows. Changes are witnessed by building from the branch and exercising the built artifact from a consumer.
+- **Webapp with PR preview deploys** — look for `vercel.json`, `netlify.toml`, Cloudflare Pages, Render, or a GitHub Action that comments a preview URL on PRs. Changes are witnessed at the preview URL.
+- **Webapp without previews** — has a dev server (`npm run dev`, `flask run`, etc.) but no per-PR environment. Changes are witnessed by running the dev server locally against the merged code.
+- **Service / CLI / daemon** — a runnable program with no UI. Changes are witnessed by running the binary and exercising the changed command path.
+- **Pre-deployment / early-stage** — not yet deployable anywhere. Changes are witnessed by confirming the changed code path is actually reachable from the project's real entry point (not just from a unit test).
+
+You must identify which shape this project is and encode a shape-specific **Verification Playbook** into verifier.md. The playbook is the difference between "the diff looks right" and "I watched this change work."
+
 ## What You Must Produce
 
 Write `.lathe/verifier.md` — the behavioral instructions for the verifier agent.
@@ -31,6 +41,25 @@ An autonomous agent will read this file each round along with the builder's diff
 4. **Is this a patch or a real fix?** If the builder added a runtime check, ask: could a type, a newtype wrapper, or an API change make this check unnecessary? If the same class of bug could be reintroduced by a future change, the fix is incomplete. Flag it in findings — not as a blocker, but as a note for the goal-setter to consider a structural follow-up.
 
 4. **Are there missing tests?** If the builder added functionality without tests, write them. If the builder's tests only cover the happy path, add adversarial cases. Tests belong in the project's test suite, not in a separate system.
+
+5. **Did you witness the change?** The builder's CI run confirmed that tests pass. That is not the same as confirming that the change works. Exercise the change end-to-end using the Verification Playbook below — follow the project's shape (library / preview / local / pre-deployment / service) and report what you actually ran and what you saw. A verifier that only reads diffs is a code reviewer, not a verifier.
+
+**Verification Playbook.**
+
+Write a section named "## Verification Playbook" that spells out exactly how this project's verifier witnesses a change. It must be specific to this project's shape — not generic. The verifier reads it every round, so it must be immediately actionable: concrete commands, concrete signals, concrete cleanup.
+
+Pick the closest match and adapt it to the real commands/paths in this repo:
+
+- **Library.** "Run `<build cmd>` from the branch. Install/link the artifact into `<example-path>` (or the repo's own example if one exists). Run `<usage cmd>` and confirm `<expected observable>`. If there is no consumable example, add one the first time you verify and keep it as the canonical smoke test."
+- **Webapp with PR preview deploys.** "The preview URL is published by `<deploy action>` as a PR comment (or status). Wait for it (`gh pr view <N> --json comments` or equivalent), then navigate to the changed route, trigger the changed flow, inspect the response. If the preview is missing or stale, that itself is the finding."
+- **Webapp without previews.** "Start `<dev cmd>` in the background, curl/visit `<changed route>`, confirm `<expected observable>`. Always kill the dev server when done (`pkill -f <pattern>` or by saved PID). If the change needs a build step (not dev mode), use `<build cmd>` + `<serve cmd>` instead."
+- **Service / CLI / daemon.** "Run `<binary> <changed subcommand / flag>` with a representative input and confirm the output changed as the goal described. For daemons, start in the background, exercise via its protocol, kill when done."
+- **Pre-deployment / early-stage.** "This project does not deploy yet. Confirm the changed code is reachable from the real entry point: import it from the project's main module (not a test), or invoke it through the CLI/API surface that exists today. If there is no entry point that can reach this code, the finding is that the change is inert — flag it rather than rubber-stamp."
+- **Fallback.** If none fit, write the best available witness method for this project and commit to it. Not witnessing is not an option.
+
+State the playbook in terms of this project's *actual* commands (which you observed in package.json / Makefile / README / CI config). Do not leave `<placeholder>` markers in verifier.md — resolve them now. If a step is impossible in this repo today (e.g., no example exists for a library), write the playbook as a target and note in the Fallback paragraph what verifier should do until that infrastructure lands.
+
+The playbook lives through many cycles — describe *how this project is witnessed*, not *what it currently does*. Commands and paths are stable; test counts and build status are not.
 
 **What the Verifier Commits.**
 
@@ -82,8 +111,9 @@ The verifier already reads a fresh snapshot and the builder's actual diff every 
 ## How to Work
 
 1. Read `.lathe/builder.md` to understand what the builder does.
-2. Read the project's test patterns — how are things tested? What's the convention?
-3. Think about common failure modes for this kind of project.
-4. Write verifier.md that encodes verification themes specific to this project's risks and patterns.
+2. Detect the project's **shape**. Read `package.json` / `Cargo.toml` / `pyproject.toml` / `go.mod`, the README, CI configs (`.github/workflows/`), deploy configs (`vercel.json`, `netlify.toml`, `fly.toml`, `Dockerfile`), and workspace layout. Classify as: library, webapp-with-previews, webapp-local, service/CLI, or pre-deployment.
+3. Read the project's test patterns — how are things tested? What's the convention?
+4. Think about common failure modes for this kind of project.
+5. Write verifier.md that encodes verification themes AND a concrete, project-specific Verification Playbook matched to the shape you detected.
 
-The verifier should feel like a thorough code reviewer who writes tests, not just comments.
+The verifier should feel like a thorough code reviewer who also uses the product.

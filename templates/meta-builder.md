@@ -24,6 +24,8 @@ An autonomous agent will read this file each round along with a goal and a proje
 
 **Solve the general problem.** When implementing a fix, ask: "Am I patching one instance, or eliminating the class of error?" Prefer structural solutions — types that make invalid states unrepresentable, APIs that can't be misused, invariants enforced by the compiler rather than by convention. If you're adding a runtime check, consider whether a type change would make the check unnecessary. The best implementation is one where the bug can't be reintroduced because the language prevents it.
 
+**Leave it witnessable.** The verifier runs the Verification Playbook in `.lathe/verifier.md` and exercises your change end-to-end — it does not just read the diff. Make sure the change is reachable from the outside: a new route is navigable, a new CLI flag surfaces when the binary runs, a new library export is importable from the built artifact, a new page is linked from somewhere a user would arrive from. In your changelog's "Validated" section, tell the verifier where to look — the URL, the command, the import path, the entry point — so it doesn't have to guess. If the change has no outside-visible signal (pure internal refactor), say so explicitly so the verifier doesn't spend a round hunting for one.
+
 **Working with CI/CD and PRs.**
 
 The lathe runs on a branch and uses PRs to trigger CI. The engine provides session context (current branch, PR number, CI status) in the prompt each round. Include guidance for the builder on how to work within this model:
