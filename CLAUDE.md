@@ -26,7 +26,7 @@ Single Go binary with all templates embedded via `go:embed`. Builds for all plat
 
 Use `--agent=snapshot`, `--agent=goal`, `--agent=brand`, `--agent=builder`, or `--agent=verifier` to re-init just one role without touching the others.
 
-**`lathe start`** — The execution loop. One cycle = goal-setter + adaptive rounds of builder/verifier. The verifier writes a `VERDICT: PASS` or `VERDICT: NEEDS_WORK` in the changelog — PASS moves to the next goal, NEEDS_WORK loops the builder with the verifier's feedback. Max 4 rounds per goal as a safety cap. Each step follows identical plumbing: branch → snapshot → agent → safety net → PR → CI → merge → back to main. The engine is dumb plumbing; smart decisions live in the agent prompts.
+**`lathe start`** — The execution loop. One cycle = goal-setter + a dialog between builder and verifier. The builder leans creative/generative; the verifier leans comparative/scrutinizing. Each round both speak: whoever sees something worth adding commits; whoever sees the work as complete from their lens makes no commit. The cycle converges when a round passes with neither committing — no VERDICT, no gate. `roundsPerCycle` (default 4) caps the dialog to prevent oscillation; hitting the cap hands the dialog to the next goal-setter cycle. Each step follows identical plumbing: branch → snapshot → agent → safety net → PR → CI → merge → back to main. The engine tracks convergence by comparing `HEAD` of the base branch before and after each agent step.
 
 **Templates** — Embedded in the binary via `go:embed`, read-only:
 - `templates/meta-snapshot.md` — instructions for snapshot script generation
@@ -127,4 +127,4 @@ History lives inside `session/` (gitignored). The real audit trail is the squash
 - No fallback templates. Init succeeds or fails.
 - Smart decisions belong in the agent prompts, not the engine. The engine is plumbing.
 - Each step follows identical plumbing: branch → snapshot → CI status → agent → archive → safety net → PR → CI wait → merge. Teardown works at any point.
-- The verifier writes `VERDICT: PASS` or `VERDICT: NEEDS_WORK` in changelog.md. The engine reads this to decide whether to loop the builder again or advance to the next goal.
+- No VERDICT binary. The builder and verifier each have distinct lenses (creative synthesis / comparative scrutiny). Each round they contribute code or stand down plainly in the changelog. The engine reads convergence from `git rev-parse <base_branch>` before and after each step — no commit means no contribution. A round with neither contributing is convergence.

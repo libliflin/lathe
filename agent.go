@@ -93,12 +93,13 @@ func runBuilder(cycle, round int, tool string) error {
 	}
 	b.WriteString("\n\n")
 
-	// Verifier feedback from previous round (if any)
+	// Verifier contribution from previous round (if any)
 	if round > 1 {
 		changelogFile := filepath.Join(latheSession, "changelog.md")
 		if feedback, err := os.ReadFile(changelogFile); err == nil {
-			b.WriteString("---\n# Verifier Feedback (previous round)\n\n")
-			b.WriteString("The verifier reviewed the last round and found issues. Address them:\n\n")
+			b.WriteString("---\n# Verifier's Contribution (previous round)\n\n")
+			b.WriteString("The verifier looked at your work from the comparative lens and either added what they saw missing or stood down. Read their changelog. Their code contributions are already in the repo — run `git log --oneline -10` to see recent commits.\n\n")
+			b.WriteString("Respond from your creative lens: refine their additions, extend the work, or recognize that the work stands complete and make no commit this round.\n\n")
 			b.Write(feedback)
 			b.WriteString("\n\n")
 		}
@@ -116,9 +117,13 @@ func runBuilder(cycle, round int, tool string) error {
 
 	// Instructions
 	b.WriteString("---\n# Your Task\n\n")
-	b.WriteString("Implement the goal above. One change, committed, validated, pushed.\n")
+	if round == 1 {
+		b.WriteString("Bring the goal into being. Implement, validate, commit, push.\n")
+	} else {
+		b.WriteString("Continue the dialog. Read the verifier's contribution from the previous round. From your creative lens, decide: refine, extend, or stand down. When you have something worth adding, commit and push it. When the work stands complete in your view, write the changelog with \"Applied: Nothing this round — the verifier's additions complete the work from my lens\" and skip the commit.\n")
+	}
 	b.WriteString("If CI is failing, fix CI first — that's always top priority.\n\n")
-	b.WriteString("**Changelog:** Write a brief changelog to `.lathe/session/changelog.md` describing what you changed and which stakeholder it benefits.\n\n")
+	b.WriteString("**Changelog:** Write a changelog to `.lathe/session/changelog.md` describing what you did this round (or explaining why you stood down).\n\n")
 
 	return invokeAgent(b.String(), cycle, fmt.Sprintf("build-%d", round), tool)
 }
@@ -165,29 +170,25 @@ func runVerifier(cycle, round int, tool string) error {
 
 	// Instructions
 	b.WriteString("---\n# Your Task\n\n")
-	b.WriteString("Check the builder's work against the goal. Ask:\n")
-	b.WriteString("1. Did the builder do what the goal asked?\n")
-	b.WriteString("2. Does it actually work? Run the tests.\n")
-	b.WriteString("3. What edge cases or regressions could this introduce?\n\n")
-	b.WriteString("If you find gaps, fix them — commit real code (tests, edge cases, error handling).\n\n")
-	b.WriteString("**Changelog:** Write `.lathe/session/changelog.md` using this exact template:\n\n")
+	b.WriteString("Continue the dialog. Read the builder's contribution this round and compare it against the goal from your scrutinizing lens. Ask: what's here, what was asked, where's the gap? Run the tests. Exercise the change. Try the hard cases.\n\n")
+	b.WriteString("When you see gaps worth adding code to close, commit them — tests, edge cases, error handling, fills. When the work stands complete from your comparative lens, write the changelog with \"Added: Nothing this round — the work holds up against the goal from my lens\" and skip the commit.\n\n")
+	b.WriteString("**Changelog:** Write `.lathe/session/changelog.md` using this template:\n\n")
 	b.WriteString("```\n")
-	b.WriteString(fmt.Sprintf("# Verification — Cycle %d, Round %d\n", cycle, round))
+	b.WriteString(fmt.Sprintf("# Verification — Cycle %d, Round %d (Verifier)\n", cycle, round))
 	b.WriteString("\n")
-	b.WriteString("## What was checked\n")
-	b.WriteString("(what you tested and reviewed)\n")
+	b.WriteString("## What I compared\n")
+	b.WriteString("(goal on one side, code on the other — what you read, ran, witnessed)\n")
 	b.WriteString("\n")
-	b.WriteString("## Findings\n")
-	b.WriteString("(what you found — issues, gaps, or confirmation that it's solid)\n")
+	b.WriteString("## What's here, what was asked\n")
+	b.WriteString("(the gap from your comparative lens, or \"matches: the work holds up against the goal\")\n")
 	b.WriteString("\n")
-	b.WriteString("## Fixes applied\n")
-	b.WriteString("(what you committed to fix, or \"None\" if the work was solid)\n")
+	b.WriteString("## What I added\n")
+	b.WriteString("(code you committed this round, or \"Nothing this round — the work holds up against the goal from my lens\")\n")
 	b.WriteString("\n")
-	b.WriteString("VERDICT: PASS\n")
+	b.WriteString("## Notes for the goal-setter\n")
+	b.WriteString("(structural follow-ups spotted during scrutiny, or \"None\")\n")
 	b.WriteString("```\n\n")
-	b.WriteString("Set the last line to exactly `VERDICT: PASS` or `VERDICT: NEEDS_WORK`.\n")
-	b.WriteString("- **PASS** — goal is met, tests pass, work is solid. Moves to the next goal.\n")
-	b.WriteString("- **NEEDS_WORK** — issues remain. The builder reads your Findings next round, so be specific about what's wrong.\n\n")
+	b.WriteString("The cycle converges when a round passes with neither of you committing — the engine detects this automatically. No VERDICT line needed; your contribution (or stand-down) speaks for itself.\n\n")
 
 	return invokeAgent(b.String(), cycle, fmt.Sprintf("verify-%d", round), tool)
 }

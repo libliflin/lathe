@@ -9,12 +9,13 @@ import (
 	"time"
 )
 
-// errMaxRounds signals the engine to stop — the cycle exhausted all
-// builder/verifier rounds without CI passing.
-var errMaxRounds = errors.New("max rounds exhausted")
+// errMaxRounds signals the engine to stop — the dialog hit the oscillation cap
+// without converging.
+var errMaxRounds = errors.New("oscillation cap reached without convergence")
 
-// runCycle executes one full cycle: goal-setter → adaptive builder/verifier rounds.
-// The verifier decides when the goal is met (VERDICT: PASS). roundsPerCycle is the safety cap.
+// runCycle executes one full cycle: goal-setter → dialog between builder and verifier.
+// Each round both contribute (or stand down). The cycle converges when a round passes
+// with neither committing. roundsPerCycle caps the dialog to prevent oscillation.
 func runCycle(cycle int, tool string) error {
 	fmt.Println()
 	fmt.Println("═══════════════════════════════════════════════")
@@ -30,45 +31,57 @@ func runCycle(cycle int, tool string) error {
 	}
 	archiveGoal(cycle)
 
-	// --- Builder/Verifier Rounds ---
+	baseBranch := getBaseBranch()
+
+	// --- Builder/Verifier Dialog ---
 	for round := 1; round <= roundsPerCycle; round++ {
-		// Builder
+		builderHead := getHead(baseBranch)
 		if err := runStep(cycle, fmt.Sprintf("round-%d-build", round), tool, func() error {
 			return runBuilder(cycle, round, tool)
 		}); err != nil {
 			return err
 		}
+		builderContributed := getHead(baseBranch) != builderHead
 
-		// Verifier
+		verifierHead := getHead(baseBranch)
 		if err := runStep(cycle, fmt.Sprintf("round-%d-verify", round), tool, func() error {
 			return runVerifier(cycle, round, tool)
 		}); err != nil {
 			return err
 		}
+		verifierContributed := getHead(baseBranch) != verifierHead
 
-		verdict := readVerdict()
-
-		// If verifier said PASS but CI failed, the verifier got it wrong.
-		// Re-run the verifier with CI failure logs so it can investigate.
-		if verdict == "PASS" && ciResult == "fail" {
-			log("CI failed but verifier said PASS — re-running verifier to investigate CI failure.")
+		// CI failure invalidates "converged" — if CI is red, the work isn't done even
+		// if neither agent committed this round. Re-run the verifier to investigate.
+		if !builderContributed && !verifierContributed && ciResult == "fail" {
+			log("Neither contributed but CI failed — re-running verifier to investigate.")
 			if err := runStep(cycle, fmt.Sprintf("round-%d-verify-ci", round), tool, func() error {
 				return runVerifier(cycle, round, tool)
 			}); err != nil {
 				return err
 			}
-			verdict = readVerdict()
+			verifierContributed = getHead(baseBranch) != verifierHead
 		}
 
-		if verdict == "PASS" {
-			log("Verifier passed on round %d. Moving to next goal.", round)
+		if !builderContributed && !verifierContributed {
+			log("Convergence reached at round %d. Both lenses stood down — goal complete.", round)
 			break
 		}
+
 		if round < roundsPerCycle {
-			log("Verifier says NEEDS_WORK. Looping builder (round %d/%d) ...", round+1, roundsPerCycle)
+			who := ""
+			switch {
+			case builderContributed && verifierContributed:
+				who = "both contributed"
+			case builderContributed:
+				who = "builder contributed"
+			case verifierContributed:
+				who = "verifier contributed"
+			}
+			log("%s — dialog continues (round %d/%d) ...", who, round+1, roundsPerCycle)
 		} else {
-			log("Max rounds reached (%d). Stopping — goal not resolved.", roundsPerCycle)
-			setCycle(cycle, "failed")
+			log("Oscillation cap reached (%d rounds). Handing dialog to next goal-setter.", roundsPerCycle)
+			setCycle(cycle, "oscillated")
 			return errMaxRounds
 		}
 	}
@@ -77,24 +90,23 @@ func runCycle(cycle int, tool string) error {
 	return nil
 }
 
-// readVerdict reads the verifier's changelog and extracts the verdict.
-// Returns "PASS", "NEEDS_WORK", or "" if no verdict found.
-// Anchors to line-start to avoid matching the word inside prose or code blocks.
-func readVerdict() string {
-	data, err := os.ReadFile(filepath.Join(latheSession, "changelog.md"))
+// getBaseBranch returns the session's base branch, defaulting to "main" when unknown.
+func getBaseBranch() string {
+	if s, err := readSession(); err == nil && s.BaseBranch != "" {
+		return s.BaseBranch
+	}
+	return "main"
+}
+
+// getHead returns the SHA of the given branch locally, or "" if unknown.
+// This is the convergence signal: HEAD of the base branch moves only when a
+// step's PR squash-merges, which only happens when the agent committed real work.
+func getHead(branch string) string {
+	out, err := runCapture("git", "rev-parse", branch)
 	if err != nil {
 		return ""
 	}
-	for _, line := range strings.Split(string(data), "\n") {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "VERDICT: PASS" {
-			return "PASS"
-		}
-		if trimmed == "VERDICT: NEEDS_WORK" {
-			return "NEEDS_WORK"
-		}
-	}
-	return ""
+	return strings.TrimSpace(out)
 }
 
 // runStep is the shared plumbing for every step in a cycle.

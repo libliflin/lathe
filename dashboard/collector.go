@@ -253,8 +253,10 @@ func tailStreamLog(cwd string, n int) []LogLine {
 	return out
 }
 
-// computeCycleStats scans stream.log for VERDICT markers and cycle boundaries.
-// This is a pragmatic heuristic — good enough to drive a dashboard sparkline.
+// computeCycleStats scans stream.log for convergence markers and cycle boundaries.
+// Tracks how many rounds each cycle took to converge — the dialog shape.
+// Accepts both the dialog-model phrases and the legacy VERDICT phrases so the
+// dashboard works across binary versions.
 func computeCycleStats(cwd string) CycleStats {
 	path := filepath.Join(cwd, ".lathe", "session", "logs", "stream.log")
 	data, err := os.ReadFile(path)
@@ -264,6 +266,16 @@ func computeCycleStats(cwd string) CycleStats {
 	var stats CycleStats
 	roundsThisCycle := 0
 	inCycle := false
+
+	converge := func(round int) {
+		if round <= 1 {
+			stats.PassOne++
+			stats.Verdicts = append(stats.Verdicts, "P1")
+		} else {
+			stats.PassLate++
+			stats.Verdicts = append(stats.Verdicts, "P"+strconv.Itoa(round))
+		}
+	}
 
 	for _, line := range strings.Split(string(data), "\n") {
 		if strings.Contains(line, "CYCLE ") && strings.Contains(line, "—") {
@@ -276,16 +288,14 @@ func computeCycleStats(cwd string) CycleStats {
 		if strings.Contains(line, "round-") && strings.Contains(line, "-build ...") {
 			roundsThisCycle++
 		}
-		if strings.Contains(line, "Verifier passed on round") {
-			if roundsThisCycle <= 1 {
-				stats.PassOne++
-				stats.Verdicts = append(stats.Verdicts, "P1")
-			} else {
-				stats.PassLate++
-				stats.Verdicts = append(stats.Verdicts, "P"+strconv.Itoa(roundsThisCycle))
-			}
+		// Dialog-model: "Convergence reached at round N."
+		// Legacy: "Verifier passed on round N. Moving to next goal."
+		if strings.Contains(line, "Convergence reached at round") || strings.Contains(line, "Verifier passed on round") {
+			converge(roundsThisCycle)
 		}
-		if strings.Contains(line, "Max rounds reached") {
+		// Dialog-model: "Oscillation cap reached"
+		// Legacy: "Max rounds reached"
+		if strings.Contains(line, "Oscillation cap reached") || strings.Contains(line, "Max rounds reached") {
 			stats.Failed++
 			stats.Verdicts = append(stats.Verdicts, "F")
 		}
@@ -293,7 +303,6 @@ func computeCycleStats(cwd string) CycleStats {
 	if inCycle {
 		stats.Total++
 	}
-	// Cap verdicts shown on sparkline to most recent 24
 	if len(stats.Verdicts) > 24 {
 		stats.Verdicts = stats.Verdicts[len(stats.Verdicts)-24:]
 	}
