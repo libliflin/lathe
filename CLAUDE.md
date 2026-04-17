@@ -59,6 +59,13 @@ safety.go                        — Safety net validation
 process.go                       — Process management (kill tree, find agent, is_running)
 shell.go                         — Shell execution helpers (run, runCapture, runPipe)
 embed.go                         — go:embed for templates/
+dashboard/                       — Self-contained web dashboard (isolated package)
+  dashboard.go                   — start/stop/status commands, daemon lifecycle
+  server.go                      — HTTP server + SSE (/api/stream)
+  collector.go                   — Lathe discovery + per-project state reading
+  index.html                     — Dashboard UI (embedded)
+  embed.go                       — go:embed for index.html
+  setsid_*.go                    — Platform-specific detach
 templates/
   meta-snapshot.md               — Instructions for snapshot script generation
   meta-goal.md                   — Instructions for goal-setter init
@@ -107,6 +114,8 @@ History lives inside `session/` (gitignored). The real audit trail is the squash
 **`lathe init` (re-init)** wipes everything in `.lathe/` except `refs/` and regenerates the snapshot script and all three behavioral docs. Use `--agent=X` to re-init just one role.
 
 **`lathe stop`** performs full teardown: kills the process tree, closes the PR, discards dirty working tree, checks out the base branch, deletes the local lathe branch, and wipes `session/`.
+
+**`lathe dashboard`** — Machine-wide read-only web UI. `lathe dashboard start` spins up a localhost-only HTTP server (random high port by default, override with `--host`/`--port`) in the background and opens the browser; `lathe dashboard stop` kills it; `lathe dashboard status` reports state. The dashboard discovers every running lathe on the machine via `pgrep lathe _run` + cwd scoping, reads each project's `.lathe/session/` files directly, and streams a fresh snapshot every 2 seconds via SSE. Daemon state lives in `~/.lathe/dashboard.json`. Code is isolated in the `dashboard/` package — it does not import or mutate any main-lathe state.
 
 ## Conventions
 

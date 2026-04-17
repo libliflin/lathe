@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/libliflin/lathe/dashboard"
 )
 
 // Global paths — set once in main, used everywhere.
@@ -73,6 +75,12 @@ func main() {
 	case "logs":
 		ensureInitialized()
 		engineLogs(os.Args[2:])
+	case "dashboard":
+		// Machine-wide dashboard — does not require a lathe-initialized project.
+		dashboard.Command(os.Args[2:])
+	case "_dashboard_serve":
+		// Hidden: background HTTP server entry for the dashboard daemon.
+		dashboard.Serve(os.Args[2:])
 	case "update":
 		cmdUpdate()
 	case "version", "--version", "-v":
@@ -98,11 +106,12 @@ func printUsage() {
 	fmt.Println(`Usage: lathe <command> [options]
 
 Commands:
-  init     Initialize lathe for this project
-  start    Start the improvement loop
-  stop     Stop the loop and clean up
-  status   Show current status
-  logs     Show agent logs
-  update   Update to the latest version
-  version  Show current version`)
+  init       Initialize lathe for this project
+  start      Start the improvement loop
+  stop       Stop the loop and clean up
+  status     Show current status
+  logs       Show agent logs
+  dashboard  Start/stop the machine-wide web dashboard
+  update     Update to the latest version
+  version    Show current version`)
 }

@@ -1,0 +1,439 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LATHE // dashboard</title>
+<style>
+  :root {
+    --bg: #0a0b10;
+    --panel: #111218;
+    --panel-hi: #161822;
+    --border: #1e1f2a;
+    --border-hi: #2a2c3a;
+    --text: #d8dae5;
+    --muted: #6b6d80;
+    --dim: #40424f;
+    --green: #5bffb0;
+    --amber: #ffcc66;
+    --blue: #6fa8ff;
+    --red: #ff5b7a;
+    --violet: #a87aff;
+    --mono: "SF Mono", "JetBrains Mono", "Fira Code", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--mono); font-size: 13px; line-height: 1.45; }
+  body { min-height: 100vh; padding: 0; }
+  a { color: var(--blue); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  .topbar {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    padding: 14px 24px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+    position: sticky; top: 0; z-index: 10;
+  }
+  .topbar .brand { font-weight: 700; letter-spacing: 0.25em; font-size: 13px; color: var(--text); }
+  .topbar .brand .slash { color: var(--violet); margin: 0 6px; }
+  .topbar .stat { display: flex; align-items: baseline; gap: 6px; }
+  .topbar .stat .label { color: var(--muted); font-size: 10px; letter-spacing: 0.15em; text-transform: uppercase; }
+  .topbar .stat .value { font-size: 16px; font-weight: 600; color: var(--text); }
+  .topbar .spacer { flex: 1; }
+  .topbar .live { display: inline-flex; align-items: center; gap: 6px; font-size: 10px; letter-spacing: 0.15em; text-transform: uppercase; color: var(--muted); }
+  .topbar .live.ok .dot { background: var(--green); box-shadow: 0 0 8px var(--green); }
+  .topbar .live.err .dot { background: var(--red); box-shadow: 0 0 8px var(--red); }
+  .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+  .dot.pulse { animation: pulse 1.8s infinite; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(460px, 1fr));
+    gap: 16px;
+    padding: 24px;
+  }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    transition: border-color 0.2s ease;
+  }
+  .card:hover { border-color: var(--border-hi); }
+  .card.flash { animation: flash 0.6s ease; }
+  @keyframes flash { 0% { background: #1a1d2a; } 100% { background: var(--panel); } }
+
+  .card-head {
+    display: flex; align-items: center; gap: 10px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel-hi);
+  }
+  .card-head .project { font-size: 16px; font-weight: 700; letter-spacing: 0.05em; }
+  .card-head .phase {
+    font-size: 10px; letter-spacing: 0.15em; text-transform: uppercase;
+    padding: 2px 8px; border-radius: 2px; background: var(--dim); color: var(--text);
+  }
+  .phase.phase-goal { background: rgba(111,168,255,0.15); color: var(--blue); border: 1px solid rgba(111,168,255,0.3); }
+  .phase.phase-build { background: rgba(168,122,255,0.15); color: var(--violet); border: 1px solid rgba(168,122,255,0.3); }
+  .phase.phase-verify { background: rgba(91,255,176,0.15); color: var(--green); border: 1px solid rgba(91,255,176,0.3); }
+  .phase.phase-idle { background: rgba(107,109,128,0.2); color: var(--muted); border: 1px solid rgba(107,109,128,0.3); }
+  .card-head .spacer { flex: 1; }
+  .card-head .rate-limit {
+    font-size: 10px; letter-spacing: 0.15em; text-transform: uppercase;
+    padding: 2px 8px; border-radius: 2px;
+    background: rgba(255,91,122,0.15); color: var(--red); border: 1px solid rgba(255,91,122,0.3);
+    animation: pulse 1.5s infinite;
+  }
+
+  .card-body { padding: 14px 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px 18px; }
+  .metric { display: flex; flex-direction: column; gap: 2px; }
+  .metric .label { font-size: 10px; color: var(--muted); letter-spacing: 0.15em; text-transform: uppercase; }
+  .metric .value { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text); }
+  .metric .value .sub { color: var(--muted); font-size: 12px; font-weight: 400; margin-left: 4px; }
+  .metric .value.big { font-size: 24px; }
+
+  .sparkline {
+    display: flex; gap: 3px;
+    margin-top: 4px;
+  }
+  .sparkline span {
+    display: inline-block;
+    font-size: 9px; font-weight: 600;
+    padding: 2px 4px; border-radius: 1px;
+    min-width: 14px; text-align: center;
+  }
+  .sparkline span.P1 { background: rgba(91,255,176,0.15); color: var(--green); border: 1px solid rgba(91,255,176,0.3); }
+  .sparkline span.P2 { background: rgba(255,204,102,0.15); color: var(--amber); border: 1px solid rgba(255,204,102,0.3); }
+  .sparkline span.P3 { background: rgba(255,204,102,0.15); color: var(--amber); border: 1px solid rgba(255,204,102,0.3); }
+  .sparkline span.P4 { background: rgba(255,204,102,0.15); color: var(--amber); border: 1px solid rgba(255,204,102,0.3); }
+  .sparkline span.F  { background: rgba(255,91,122,0.15); color: var(--red); border: 1px solid rgba(255,91,122,0.3); }
+
+  .card-section {
+    padding: 10px 16px;
+    border-top: 1px solid var(--border);
+  }
+  .card-section .title {
+    font-size: 10px; letter-spacing: 0.15em; text-transform: uppercase; color: var(--muted);
+    margin-bottom: 6px;
+  }
+  .commits { display: flex; flex-direction: column; gap: 3px; }
+  .commit { display: flex; gap: 8px; font-size: 12px; align-items: baseline; }
+  .commit .sha { color: var(--violet); min-width: 56px; font-weight: 600; }
+  .commit .msg { flex: 1; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .commit .time { color: var(--muted); font-size: 11px; white-space: nowrap; }
+
+  .log {
+    font-size: 11px;
+    color: var(--muted);
+    max-height: 160px;
+    overflow-y: auto;
+    display: flex; flex-direction: column;
+    line-height: 1.5;
+  }
+  .log .line { display: flex; gap: 8px; padding: 1px 0; }
+  .log .line .t { color: var(--dim); min-width: 54px; }
+  .log .line .m { color: var(--text); }
+  .log .line.ok .m { color: var(--green); }
+  .log .line.warn .m { color: var(--amber); }
+  .log .line.err .m { color: var(--red); }
+  .log .line.info .m { color: var(--text); }
+  .log::-webkit-scrollbar { width: 6px; }
+  .log::-webkit-scrollbar-track { background: transparent; }
+  .log::-webkit-scrollbar-thumb { background: var(--border-hi); border-radius: 3px; }
+
+  .card-foot {
+    display: flex; gap: 14px; align-items: center; flex-wrap: wrap;
+    padding: 10px 16px;
+    border-top: 1px solid var(--border);
+    font-size: 11px; color: var(--muted);
+  }
+  .card-foot .pill {
+    border: 1px solid var(--border-hi); border-radius: 2px;
+    padding: 2px 6px; color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .empty {
+    padding: 60px 24px;
+    text-align: center;
+    color: var(--muted);
+  }
+  .empty h2 { color: var(--text); margin: 0 0 8px 0; font-size: 16px; font-weight: 600; letter-spacing: 0.05em; }
+  .empty p { margin: 0; font-size: 13px; line-height: 1.6; }
+  .empty code { color: var(--violet); background: var(--panel); padding: 2px 6px; border-radius: 2px; }
+
+  .footer {
+    padding: 16px 24px;
+    border-top: 1px solid var(--border);
+    font-size: 10px; color: var(--muted); letter-spacing: 0.1em; text-transform: uppercase;
+    display: flex; gap: 16px; justify-content: space-between;
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <span class="brand">LATHE <span class="slash">//</span> DASHBOARD</span>
+  <div class="stat">
+    <span class="label">Active</span>
+    <span class="value" id="stat-active">—</span>
+  </div>
+  <div class="stat">
+    <span class="label">Cycles</span>
+    <span class="value" id="stat-cycles">—</span>
+  </div>
+  <div class="stat">
+    <span class="label">Pass@1</span>
+    <span class="value" id="stat-pass1">—</span>
+  </div>
+  <span class="spacer"></span>
+  <span class="live" id="live"><span class="dot pulse"></span><span id="live-label">connecting</span></span>
+</div>
+
+<div id="content"></div>
+
+<div class="footer">
+  <span id="updated">—</span>
+  <span>LOCALHOST ONLY // SSE @ /api/stream</span>
+</div>
+
+<script>
+"use strict";
+
+const $content = document.getElementById('content');
+const $statActive = document.getElementById('stat-active');
+const $statCycles = document.getElementById('stat-cycles');
+const $statPass1 = document.getElementById('stat-pass1');
+const $live = document.getElementById('live');
+const $liveLabel = document.getElementById('live-label');
+const $updated = document.getElementById('updated');
+
+let prevState = new Map(); // pid -> lathe
+let reconnectAttempts = 0;
+
+function fmtElapsed(sec) {
+  sec = Math.max(0, Math.floor(sec || 0));
+  const d = Math.floor(sec / 86400); sec -= d * 86400;
+  const h = Math.floor(sec / 3600);  sec -= h * 3600;
+  const m = Math.floor(sec / 60);    sec -= m * 60;
+  if (d > 0) return d + "d " + h + "h";
+  if (h > 0) return h + "h " + String(m).padStart(2, '0') + "m";
+  if (m > 0) return m + "m " + String(sec).padStart(2, '0') + "s";
+  return sec + "s";
+}
+
+function phaseClass(phase) {
+  if (!phase) return 'phase-idle';
+  if (phase.includes('goal')) return 'phase-goal';
+  if (phase.includes('build')) return 'phase-build';
+  if (phase.includes('verify')) return 'phase-verify';
+  return 'phase-idle';
+}
+
+function logKind(msg) {
+  if (!msg) return 'info';
+  const m = msg.toLowerCase();
+  if (m.includes('error') || m.includes('rate limited') || m.includes('failed')) return 'err';
+  if (m.includes('warn') || m.includes('safety net')) return 'warn';
+  if (m.includes('pass') || m.includes('completed') || m.includes('done') || m.includes('merged')) return 'ok';
+  return 'info';
+}
+
+function prUrl(l) {
+  if (!l.pr_number || !l.repo_url) return null;
+  return l.repo_url.replace(/\/$/, '') + "/pull/" + l.pr_number;
+}
+
+function escapeHTML(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+  ));
+}
+
+function renderCard(l) {
+  const phase = l.phase || 'idle';
+  const stats = l.cycle_stats || { total: 0, pass_one: 0, pass_late: 0, failed: 0, verdicts: [] };
+  const totalScored = stats.pass_one + stats.pass_late + stats.failed;
+  const passOneRate = totalScored > 0 ? Math.round((stats.pass_one / totalScored) * 100) : null;
+
+  const verdicts = (stats.verdicts || [])
+    .map(v => '<span class="' + escapeHTML(v) + '">' + escapeHTML(v) + '</span>')
+    .join('');
+
+  const commits = (l.recent_commits || [])
+    .slice(0, 4)
+    .map(c => (
+      '<div class="commit">' +
+        '<span class="sha">' + escapeHTML(c.sha) + '</span>' +
+        '<span class="msg">' + escapeHTML(c.message) + '</span>' +
+        '<span class="time">' + escapeHTML(c.time) + '</span>' +
+      '</div>'
+    ))
+    .join('');
+
+  const logs = (l.recent_logs || [])
+    .slice(-20)
+    .map(line => {
+      const kind = logKind(line.message);
+      return '<div class="line ' + kind + '">' +
+        '<span class="t">' + escapeHTML(line.time) + '</span>' +
+        '<span class="m">' + escapeHTML(line.message) + '</span>' +
+      '</div>';
+    })
+    .join('');
+
+  const prLink = prUrl(l);
+  const prHTML = prLink
+    ? '<a href="' + escapeHTML(prLink) + '" target="_blank" rel="noopener">PR #' + escapeHTML(l.pr_number) + ' ↗</a>'
+    : (l.pr_number ? 'PR #' + escapeHTML(l.pr_number) : '');
+
+  const rateLimit = l.rate_limited ? '<span class="rate-limit">rate limited</span>' : '';
+
+  return (
+    '<div class="card" data-pid="' + l.pid + '">' +
+      '<div class="card-head">' +
+        '<span class="dot pulse" style="background:var(--green);box-shadow:0 0 8px var(--green)"></span>' +
+        '<span class="project">' + escapeHTML(l.project) + '</span>' +
+        '<span class="phase ' + phaseClass(phase) + '">' + escapeHTML(phase) + '</span>' +
+        '<span class="spacer"></span>' +
+        rateLimit +
+      '</div>' +
+
+      '<div class="card-body">' +
+        '<div class="metric">' +
+          '<span class="label">Cycle</span>' +
+          '<span class="value big">' + (l.cycle || 0) + '</span>' +
+        '</div>' +
+        '<div class="metric">' +
+          '<span class="label">Uptime</span>' +
+          '<span class="value big">' + escapeHTML(fmtElapsed(l.elapsed_seconds)) + '</span>' +
+        '</div>' +
+        '<div class="metric">' +
+          '<span class="label">Pass@1</span>' +
+          '<span class="value">' + (passOneRate !== null ? passOneRate + '%' : '—') +
+          '<span class="sub">' + stats.pass_one + '/' + (totalScored || 0) + '</span></span>' +
+        '</div>' +
+        '<div class="metric">' +
+          '<span class="label">Verdicts</span>' +
+          '<div class="sparkline">' + (verdicts || '<span style="color:var(--muted);border:none">—</span>') + '</div>' +
+        '</div>' +
+      '</div>' +
+
+      '<div class="card-section">' +
+        '<div class="title">Recent Commits</div>' +
+        '<div class="commits">' + (commits || '<span style="color:var(--muted);font-size:11px">no commits yet</span>') + '</div>' +
+      '</div>' +
+
+      '<div class="card-section">' +
+        '<div class="title">Stream</div>' +
+        '<div class="log">' + (logs || '<span style="color:var(--muted)">no activity yet</span>') + '</div>' +
+      '</div>' +
+
+      '<div class="card-foot">' +
+        '<span class="pill">PID ' + l.pid + (l.agent_pid ? ' + ' + l.agent_pid : '') + '</span>' +
+        '<span class="pill">' + escapeHTML(l.mode || '—') + '</span>' +
+        (l.branch ? '<span class="pill">' + escapeHTML(l.branch) + '</span>' : '') +
+        (prHTML ? '<span>' + prHTML + '</span>' : '') +
+        '<span class="spacer" style="flex:1"></span>' +
+        '<span title="' + escapeHTML(l.cwd) + '" style="color:var(--dim)">' + escapeHTML(l.cwd) + '</span>' +
+      '</div>' +
+    '</div>'
+  );
+}
+
+function renderEmpty() {
+  return (
+    '<div class="empty">' +
+      '<h2>NO LATHES RUNNING</h2>' +
+      '<p>Start one with <code>lathe start</code> from any lathe-initialized project.</p>' +
+      '<p style="margin-top:16px;font-size:11px;color:var(--dim)">This dashboard shows every <code>lathe _run</code> process on this machine.</p>' +
+    '</div>'
+  );
+}
+
+function render(snap) {
+  const lathes = snap.lathes || [];
+
+  // Header stats
+  $statActive.textContent = lathes.length;
+  let totalCycles = 0, passOne = 0, totalScored = 0;
+  for (const l of lathes) {
+    const s = l.cycle_stats || {};
+    totalCycles += (s.pass_one || 0) + (s.pass_late || 0) + (s.failed || 0);
+    passOne += (s.pass_one || 0);
+    totalScored += (s.pass_one || 0) + (s.pass_late || 0) + (s.failed || 0);
+  }
+  $statCycles.textContent = totalCycles;
+  $statPass1.textContent = totalScored > 0 ? Math.round((passOne / totalScored) * 100) + "%" : "—";
+
+  // Body
+  if (lathes.length === 0) {
+    $content.innerHTML = renderEmpty();
+    prevState = new Map();
+  } else {
+    const nextState = new Map();
+    const html = ['<div class="grid">'];
+    for (const l of lathes) {
+      html.push(renderCard(l));
+      nextState.set(l.pid, l);
+    }
+    html.push('</div>');
+    $content.innerHTML = html.join('');
+
+    // flash on change: cycle changed OR phase changed
+    for (const [pid, l] of nextState) {
+      const prev = prevState.get(pid);
+      if (prev && (prev.cycle !== l.cycle || prev.phase !== l.phase)) {
+        const el = $content.querySelector('.card[data-pid="' + pid + '"]');
+        if (el) {
+          el.classList.remove('flash');
+          void el.offsetWidth;
+          el.classList.add('flash');
+        }
+      }
+    }
+    prevState = nextState;
+  }
+
+  const ts = new Date(snap.collected_at).toLocaleTimeString();
+  $updated.textContent = "updated " + ts;
+}
+
+function setLive(ok, label) {
+  $live.classList.toggle('ok', ok);
+  $live.classList.toggle('err', !ok);
+  $liveLabel.textContent = label;
+}
+
+function connect() {
+  const es = new EventSource('/api/stream');
+  es.onmessage = ev => {
+    try {
+      const snap = JSON.parse(ev.data);
+      render(snap);
+      setLive(true, 'live');
+      reconnectAttempts = 0;
+    } catch (e) { console.error(e); }
+  };
+  es.onerror = () => {
+    setLive(false, 'reconnecting');
+    es.close();
+    reconnectAttempts++;
+    const delay = Math.min(10000, 500 * Math.pow(1.5, reconnectAttempts));
+    setTimeout(connect, delay);
+  };
+}
+
+// initial paint from /api/state for a snappy first load
+fetch('/api/state').then(r => r.json()).then(render).catch(() => {});
+connect();
+</script>
+
+</body>
+</html>

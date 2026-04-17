@@ -1,0 +1,314 @@
+package dashboard
+
+import (
+	"encoding/json"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"time"
+)
+
+// Lathe is the snapshot of one running lathe process, as shown on the dashboard.
+type Lathe struct {
+	PID             int        `json:"pid"`
+	AgentPID        int        `json:"agent_pid,omitempty"`
+	Project         string     `json:"project"`
+	CWD             string     `json:"cwd"`
+	Branch          string     `json:"branch"`
+	BaseBranch      string     `json:"base_branch"`
+	PRNumber        string     `json:"pr_number,omitempty"`
+	Mode            string     `json:"mode"`
+	Cycle           int        `json:"cycle"`
+	Phase           string     `json:"phase,omitempty"`
+	ElapsedSeconds  int64      `json:"elapsed_seconds"`
+	RateLimited     bool       `json:"rate_limited"`
+	RecentCommits   []Commit   `json:"recent_commits"`
+	RecentLogs      []LogLine  `json:"recent_logs"`
+	CycleStats      CycleStats `json:"cycle_stats"`
+	LatestChangelog string     `json:"latest_changelog,omitempty"`
+	RepoURL         string     `json:"repo_url,omitempty"`
+}
+
+type Commit struct {
+	SHA     string `json:"sha"`
+	Message string `json:"message"`
+	Time    string `json:"time"`
+}
+
+type LogLine struct {
+	Time    string `json:"time"`
+	Message string `json:"message"`
+}
+
+// CycleStats summarizes verdict history for a given lathe.
+type CycleStats struct {
+	Total    int `json:"total"`     // cycles touched (includes in-progress)
+	PassOne  int `json:"pass_one"`  // PASS on first round
+	PassLate int `json:"pass_late"` // PASS on later rounds
+	Failed   int `json:"failed"`    // max rounds exhausted
+	Verdicts []string `json:"verdicts"` // chronological, for sparkline ("P1", "P2", "P3", "F")
+}
+
+type Snapshot struct {
+	Lathes      []Lathe   `json:"lathes"`
+	CollectedAt time.Time `json:"collected_at"`
+}
+
+// Collect discovers all lathes running on the machine by scanning for `lathe _run`
+// processes, then reads each one's session state from disk.
+func Collect() Snapshot {
+	snap := Snapshot{CollectedAt: time.Now()}
+
+	out, err := exec.Command("pgrep", "-f", "lathe _run").Output()
+	if err != nil {
+		return snap
+	}
+
+	seen := map[int]bool{}
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		pid, err := strconv.Atoi(strings.TrimSpace(line))
+		if err != nil || seen[pid] {
+			continue
+		}
+		seen[pid] = true
+		if l, ok := readLathe(pid); ok {
+			snap.Lathes = append(snap.Lathes, l)
+		}
+	}
+	return snap
+}
+
+func readLathe(pid int) (Lathe, bool) {
+	cwd := getPidCwd(pid)
+	if cwd == "" {
+		return Lathe{}, false
+	}
+
+	sessionPath := filepath.Join(cwd, ".lathe", "session", "session.json")
+	sdata, err := os.ReadFile(sessionPath)
+	if err != nil {
+		return Lathe{}, false
+	}
+	var sess struct {
+		Branch     string `json:"branch"`
+		BaseBranch string `json:"base_branch"`
+		PRNumber   string `json:"pr_number"`
+		Mode       string `json:"mode"`
+	}
+	if err := json.Unmarshal(sdata, &sess); err != nil {
+		return Lathe{}, false
+	}
+
+	l := Lathe{
+		PID:        pid,
+		CWD:        cwd,
+		Project:    filepath.Base(cwd),
+		Branch:     sess.Branch,
+		BaseBranch: sess.BaseBranch,
+		PRNumber:   sess.PRNumber,
+		Mode:       sess.Mode,
+	}
+
+	if cdata, err := os.ReadFile(filepath.Join(cwd, ".lathe", "session", "cycle.json")); err == nil {
+		var c struct {
+			Cycle  int    `json:"cycle"`
+			Status string `json:"status"`
+		}
+		if err := json.Unmarshal(cdata, &c); err == nil {
+			l.Cycle = c.Cycle
+			l.Phase = c.Status
+		}
+	}
+
+	if _, err := os.Stat(filepath.Join(cwd, ".lathe", "session", "rate-limited")); err == nil {
+		l.RateLimited = true
+	}
+
+	l.ElapsedSeconds = getPidElapsed(pid)
+	l.AgentPID = findAgentForCwd(cwd)
+	l.RecentCommits = getRecentCommits(cwd, 5)
+	l.RecentLogs = tailStreamLog(cwd, 40)
+	l.CycleStats = computeCycleStats(cwd)
+	l.LatestChangelog = readLatestChangelog(cwd)
+	l.RepoURL = getRepoURL(cwd)
+
+	return l, true
+}
+
+// getPidCwd returns the working directory of a PID using lsof. Returns "" on failure.
+func getPidCwd(pid int) string {
+	out, err := exec.Command("lsof", "-p", strconv.Itoa(pid), "-a", "-d", "cwd", "-Fn").Output()
+	if err != nil {
+		return ""
+	}
+	for _, line := range strings.Split(string(out), "\n") {
+		if strings.HasPrefix(line, "n") {
+			return strings.TrimPrefix(line, "n")
+		}
+	}
+	return ""
+}
+
+// getPidElapsed returns elapsed seconds since PID started. Uses `ps -o etimes=`.
+func getPidElapsed(pid int) int64 {
+	out, err := exec.Command("ps", "-p", strconv.Itoa(pid), "-o", "etimes=").Output()
+	if err != nil {
+		return 0
+	}
+	n, _ := strconv.ParseInt(strings.TrimSpace(string(out)), 10, 64)
+	return n
+}
+
+// findAgentForCwd returns the PID of the claude/amp subprocess whose cwd matches.
+func findAgentForCwd(cwd string) int {
+	out, err := exec.Command("pgrep", "-f", "claude.*--dangerously-skip-permissions.*--print").Output()
+	if err != nil {
+		return 0
+	}
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		pid, err := strconv.Atoi(strings.TrimSpace(line))
+		if err != nil {
+			continue
+		}
+		if getPidCwd(pid) == cwd {
+			return pid
+		}
+	}
+	return 0
+}
+
+func getRecentCommits(cwd string, n int) []Commit {
+	// --no-pager so git doesn't try to invoke a pager; safe when stdout is a pipe.
+	cmd := exec.Command("git", "-C", cwd, "log", "-n", strconv.Itoa(n),
+		"--pretty=format:%h|%s|%cr")
+	out, err := cmd.Output()
+	if err != nil {
+		return nil
+	}
+	var commits []Commit
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		parts := strings.SplitN(line, "|", 3)
+		if len(parts) < 3 {
+			continue
+		}
+		commits = append(commits, Commit{
+			SHA:     parts[0],
+			Message: parts[1],
+			Time:    parts[2],
+		})
+	}
+	return commits
+}
+
+func getRepoURL(cwd string) string {
+	cmd := exec.Command("git", "-C", cwd, "remote", "get-url", "origin")
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	url := strings.TrimSpace(string(out))
+	// Normalize git@github.com:owner/repo.git to https://github.com/owner/repo
+	if strings.HasPrefix(url, "git@") {
+		url = strings.Replace(url, ":", "/", 1)
+		url = strings.Replace(url, "git@", "https://", 1)
+	}
+	url = strings.TrimSuffix(url, ".git")
+	return url
+}
+
+// tailStreamLog returns the last n lines of the session stream log, parsed into LogLines.
+// Lines look like: "  [lathe] 18:26:30 Message text"
+func tailStreamLog(cwd string, n int) []LogLine {
+	path := filepath.Join(cwd, ".lathe", "session", "logs", "stream.log")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	lines := strings.Split(string(data), "\n")
+	start := len(lines) - n - 1
+	if start < 0 {
+		start = 0
+	}
+	var out []LogLine
+	for _, raw := range lines[start:] {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			continue
+		}
+		// Parse `[lathe] HH:MM:SS rest...`
+		t, msg := "", raw
+		if i := strings.Index(raw, "[lathe]"); i >= 0 {
+			rest := strings.TrimSpace(raw[i+len("[lathe]"):])
+			parts := strings.SplitN(rest, " ", 2)
+			if len(parts) == 2 {
+				t, msg = parts[0], parts[1]
+			} else {
+				msg = rest
+			}
+		}
+		out = append(out, LogLine{Time: t, Message: msg})
+	}
+	return out
+}
+
+// computeCycleStats scans stream.log for VERDICT markers and cycle boundaries.
+// This is a pragmatic heuristic — good enough to drive a dashboard sparkline.
+func computeCycleStats(cwd string) CycleStats {
+	path := filepath.Join(cwd, ".lathe", "session", "logs", "stream.log")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return CycleStats{}
+	}
+	var stats CycleStats
+	roundsThisCycle := 0
+	inCycle := false
+
+	for _, line := range strings.Split(string(data), "\n") {
+		if strings.Contains(line, "CYCLE ") && strings.Contains(line, "—") {
+			if inCycle {
+				stats.Total++
+			}
+			inCycle = true
+			roundsThisCycle = 0
+		}
+		if strings.Contains(line, "round-") && strings.Contains(line, "-build ...") {
+			roundsThisCycle++
+		}
+		if strings.Contains(line, "Verifier passed on round") {
+			if roundsThisCycle <= 1 {
+				stats.PassOne++
+				stats.Verdicts = append(stats.Verdicts, "P1")
+			} else {
+				stats.PassLate++
+				stats.Verdicts = append(stats.Verdicts, "P"+strconv.Itoa(roundsThisCycle))
+			}
+		}
+		if strings.Contains(line, "Max rounds reached") {
+			stats.Failed++
+			stats.Verdicts = append(stats.Verdicts, "F")
+		}
+	}
+	if inCycle {
+		stats.Total++
+	}
+	// Cap verdicts shown on sparkline to most recent 24
+	if len(stats.Verdicts) > 24 {
+		stats.Verdicts = stats.Verdicts[len(stats.Verdicts)-24:]
+	}
+	return stats
+}
+
+func readLatestChangelog(cwd string) string {
+	path := filepath.Join(cwd, ".lathe", "session", "changelog.md")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	s := string(data)
+	if len(s) > 2000 {
+		s = s[:2000] + "\n... (truncated)"
+	}
+	return s
+}
