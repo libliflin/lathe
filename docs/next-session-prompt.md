@@ -1,5 +1,7 @@
 # Next Session: Stakeholder Simulation Model
 
+> **Status (2026-04-17): superseded.** The two-agent split described below (sim + champion) was collapsed into a single **customer champion** role that *is* the goal-setter. The champion picks one stakeholder each cycle, uses the project as them directly, and names the goal from lived experience. No separate sim agent. No external sim system (the spun-out external project went elsewhere). See `templates/meta-goal.md` and the README for the current model. This doc is kept as workshop history — the open questions on cycle scope, projection, rotation, and sim-vs-verifier separation of concerns are still relevant.
+
 ## Context
 
 Lathe is an autonomous code improvement loop. We've been through several iterations:

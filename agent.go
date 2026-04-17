@@ -50,12 +50,17 @@ func runGoalSetter(cycle int, tool string) error {
 
 	// Instructions
 	b.WriteString("---\n# Your Task\n\n")
-	b.WriteString("Pick the single highest-value change for this cycle. Write a goal file describing:\n")
-	b.WriteString("- **What** to change (specific, actionable)\n")
-	b.WriteString("- **Which stakeholder** it helps and why\n")
-	b.WriteString("- **Why now** — what in the snapshot makes this the most valuable change right now\n\n")
+	b.WriteString("You are the customer champion. Each cycle:\n\n")
+	b.WriteString("1. If the floor is violated (CI red, build broken, tests failing), the goal is to fix that — skip straight to step 4.\n")
+	b.WriteString("2. Otherwise, pick one stakeholder (rotate based on Previous Goals — prefer one under-served recently) and say who.\n")
+	b.WriteString("3. **Use the project as them.** Walk their first-encounter journey — run the commands, read the output, hit the friction. Notice the emotional signal goal.md defined for them. This is not optional; it is how a champion earns the courage to name what's valuable.\n")
+	b.WriteString("4. Pick the single change that would most improve their next encounter. Write a goal file describing:\n")
+	b.WriteString("   - **What** to change (specific, actionable — not how)\n")
+	b.WriteString("   - **Which stakeholder** it helps and why\n")
+	b.WriteString("   - **Why now** — the specific moment in the journey (or snapshot signal) that makes this the most valuable change right now\n")
+	b.WriteString("   - **Lived experience note** — which stakeholder you became, what you tried, what the worst/hollowest moment was\n\n")
 	b.WriteString("Commit this goal as a file the builder can read. The builder implements; you decide.\n\n")
-	b.WriteString("**Changelog:** Write a brief changelog to `.lathe/session/changelog.md` describing what goal you set and why.\n\n")
+	b.WriteString("**Changelog:** Write a brief changelog to `.lathe/session/changelog.md` describing which stakeholder you became, what you experienced, the goal you set, and why.\n\n")
 
 	return invokeAgent(b.String(), cycle, "goal", tool)
 }

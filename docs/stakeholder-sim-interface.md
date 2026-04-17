@@ -1,5 +1,7 @@
 # Stakeholder Sim — Interface Spec (for handoff)
 
+> **Status (2026-04-17): lathe is no longer planning to consume this.** The external-sim project was spun out and went elsewhere. Lathe committed to an in-agent model instead: the customer champion (the role formerly called goal-setter) uses the project directly each cycle. This spec is kept as reference for the external project, not as a forward plan for lathe.
+
 ## What This Is
 
 An interface definition for a stakeholder simulation system. Lathe will be a consumer of this system, but doesn't own the implementation. Another project should be able to pick this up and build it independently.
