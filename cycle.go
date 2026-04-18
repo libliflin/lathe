@@ -33,6 +33,7 @@ func runCycle(cycle int, tool string) error {
 	}
 
 	// --- Goal Setter ---
+	resolveStalePRs()
 	if err := runStep(cycle, "goal", tool, func() error {
 		return runGoalSetter(cycle, tool)
 	}); err != nil {
@@ -43,7 +44,12 @@ func runCycle(cycle int, tool string) error {
 	baseBranch := getBaseBranch()
 
 	// --- Builder/Verifier Dialog ---
+	// The SHA capture happens AFTER resolveStalePRs so that delta reflects only
+	// this step's own work, not a parallel stale-PR merge that happened to land
+	// at the same step boundary. Without this, a substantive stale merge could
+	// mask a non-substantive step.
 	for round := 1; round <= roundsPerCycle; round++ {
+		resolveStalePRs()
 		builderHead := getHead(baseBranch)
 		if err := runStep(cycle, fmt.Sprintf("round-%d-build", round), tool, func() error {
 			return runBuilder(cycle, round, tool)
@@ -52,6 +58,7 @@ func runCycle(cycle int, tool string) error {
 		}
 		builderContributed := classifyContribution(builderHead, getHead(baseBranch), "builder")
 
+		resolveStalePRs()
 		verifierHead := getHead(baseBranch)
 		if err := runStep(cycle, fmt.Sprintf("round-%d-verify", round), tool, func() error {
 			return runVerifier(cycle, round, tool)
@@ -64,12 +71,14 @@ func runCycle(cycle int, tool string) error {
 		// if neither agent committed this round. Re-run the verifier to investigate.
 		if !builderContributed && !verifierContributed && ciResult == "fail" {
 			log("Neither contributed but CI failed — re-running verifier to investigate.")
+			resolveStalePRs()
+			ciRerunHead := getHead(baseBranch)
 			if err := runStep(cycle, fmt.Sprintf("round-%d-verify-ci", round), tool, func() error {
 				return runVerifier(cycle, round, tool)
 			}); err != nil {
 				return err
 			}
-			verifierContributed = getHead(baseBranch) != verifierHead
+			verifierContributed = classifyContribution(ciRerunHead, getHead(baseBranch), "verifier-rerun")
 		}
 
 		if !builderContributed && !verifierContributed {
@@ -267,15 +276,13 @@ func getHead(branch string) string {
 }
 
 // runStep is the shared plumbing for every step in a cycle.
+// resolveStalePRs is called by the caller (cycle.go) BEFORE this function so that
+// the caller can capture a clean pre-step SHA — otherwise a stale PR merge at the
+// top of runStep would pollute the delta used for contribution classification.
 func runStep(cycle int, phase string, tool string, agentFn func() error) error {
 	waitForRateLimit()
 	setCycle(cycle, phase)
 	log("%s ...", phase)
-
-	// Clean up any lathe PRs from earlier steps whose CI has since completed.
-	// Without this, a PR whose CI took longer than this step's waitForCI budget
-	// sits orphaned forever.
-	resolveStalePRs()
 
 	if err := createSessionBranch(); err != nil {
 		return fmt.Errorf("create branch: %w", err)
