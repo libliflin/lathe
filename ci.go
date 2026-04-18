@@ -151,6 +151,68 @@ func waitForCIDirect() {
 	log("CI: timeout after %ds", ciWaitTimeout)
 }
 
+// preStartCleanup is called once at the top of `lathe start`, before session
+// state is wiped. It surfaces any lathe/* PRs left open by a prior session
+// (crash, kill, or CI timing out after lathe stop), merges the greens to
+// preserve that work, and reports the rest so the user knows what's inherited.
+// Fail/pending orphans are picked up by the first step's resolveStalePRs and
+// exposed to the new session's agents via stale-prs.txt.
+func preStartCleanup() {
+	out, err := runCapture("gh", "pr", "list",
+		"--state", "open",
+		"--author", "@me",
+		"--json", "number,headRefName",
+		"--jq", `.[] | select(.headRefName | startswith("lathe/")) | [.number, .headRefName] | @tsv`)
+	if err != nil || strings.TrimSpace(out) == "" {
+		return
+	}
+
+	fmt.Println()
+	fmt.Println("  Checking for unfinished business from a previous session ...")
+
+	merged, fails, pendings := 0, 0, 0
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		parts := strings.SplitN(line, "\t", 2)
+		if len(parts) < 2 {
+			continue
+		}
+		prNum := strings.TrimSpace(parts[0])
+		branch := strings.TrimSpace(parts[1])
+
+		switch probePRCI(prNum) {
+		case "pass":
+			if err := runSilent("gh", "pr", "merge", prNum, "--squash", "--delete-branch"); err == nil {
+				_ = runSilent("git", "branch", "-D", branch)
+				merged++
+				fmt.Printf("  ✓  Merged stale PR #%s (%s)\n", prNum, branch)
+			} else {
+				fmt.Printf("  ✗  Merge failed for stale PR #%s (%s): %v\n", prNum, branch, err)
+			}
+		case "fail":
+			fails++
+			fmt.Printf("  ⚠  Stale PR #%s (%s): CI failing — first cycle's agents will see it\n", prNum, branch)
+		case "pending":
+			pendings++
+			fmt.Printf("  …  Stale PR #%s (%s): CI pending — will re-probe during the session\n", prNum, branch)
+		}
+	}
+
+	if merged > 0 {
+		base, _ := runCapture("git", "rev-parse", "--abbrev-ref", "HEAD")
+		base = strings.TrimSpace(base)
+		if base != "" {
+			_ = runSilent("git", "fetch", "origin", base)
+			_ = runSilent("git", "pull", "--ff-only", "origin", base)
+		}
+	}
+	if merged+fails+pendings == 0 {
+		fmt.Println("  Clean.")
+	} else {
+		fmt.Printf("  Summary: %d merged, %d failing, %d pending.\n", merged, fails, pendings)
+	}
+	fmt.Println()
+}
+
 // resolveStalePRs finds any open lathe-branch PRs (from this or earlier steps)
 // and merges the ones whose CI has since turned green. Handles the case where
 // CI took longer than waitForCI's per-step budget — the PR sat green but unmerged
@@ -197,6 +259,14 @@ func resolveStalePRs() {
 			} else {
 				_ = runSilent("git", "branch", "-D", branch)
 				merged++
+				// If this was the session's active PR, clear session state so
+				// createSessionBranch doesn't try to check out a branch that no
+				// longer exists.
+				if s.PRNumber == prNum {
+					s.Branch = ""
+					s.PRNumber = ""
+					_ = writeSession(s)
+				}
 			}
 		case "fail":
 			log("Stale PR #%s (%s): CI failed — adding to agent context.", prNum, branch)

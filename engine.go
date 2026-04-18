@@ -61,6 +61,11 @@ func engineStart(args []string) {
 		os.Exit(1)
 	}
 
+	// Sweep up unfinished business from any previous session: merge any lathe/*
+	// PRs whose CI has since turned green, report the rest. This happens before
+	// we wipe session state so the user sees what we inherited.
+	preStartCleanup()
+
 	// Clean slate
 	os.RemoveAll(latheSession)
 	os.MkdirAll(filepath.Join(latheSession, "logs"), 0755)

@@ -166,16 +166,38 @@ func createSessionBranch() error {
 		return err
 	}
 
-	// Only create a branch if we're currently on base
 	current, err := runCapture("git", "rev-parse", "--abbrev-ref", "HEAD")
 	if err != nil {
 		return err
 	}
-	if current != s.BaseBranch {
-		return nil // already on a work branch
+
+	// If the session already has an active PR from a previous step in this cycle,
+	// continue on that branch instead of cutting fresh. This keeps a single goal's
+	// work on one PR across rounds — when CI takes longer than a step's waitForCI
+	// budget, the next step pushes to the same PR rather than orphaning it.
+	if s.Branch != "" && s.PRNumber != "" {
+		if current == s.Branch {
+			return nil // already on it
+		}
+		// Fetch in case the branch was pushed from a prior step that didn't pull back.
+		_ = runSilent("git", "fetch", "origin", s.Branch)
+		if err := runSilent("git", "checkout", s.Branch); err != nil {
+			// Branch is gone — PR was closed/merged outside the engine. Clear and cut fresh.
+			log("session branch %s no longer available — cutting fresh", s.Branch)
+			s.Branch = ""
+			s.PRNumber = ""
+			_ = writeSession(s)
+		} else {
+			log("Continuing on open lathe branch %s (PR #%s)", s.Branch, s.PRNumber)
+			return nil
+		}
 	}
 
-	// Pull latest
+	if current != s.BaseBranch {
+		return nil // already on a work branch (e.g. freshly checked out by initSessionState)
+	}
+
+	// Pull latest base, cut a fresh branch for this step
 	_ = runSilent("git", "pull", "--ff-only", "origin", s.BaseBranch)
 
 	ts := time.Now().Format("20060102-150405")

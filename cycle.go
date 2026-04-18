@@ -23,6 +23,15 @@ func runCycle(cycle int, tool string) error {
 	fmt.Println("═══════════════════════════════════════════════")
 	fmt.Println()
 
+	// A new cycle is a new goal. Clear any PR left active from the previous cycle
+	// so the goal step cuts a fresh branch. The orphan (if any) stays visible to
+	// the agents via stale-prs.txt.
+	if s, err := readSession(); err == nil && (s.Branch != "" || s.PRNumber != "") {
+		s.Branch = ""
+		s.PRNumber = ""
+		_ = writeSession(s)
+	}
+
 	// --- Goal Setter ---
 	if err := runStep(cycle, "goal", tool, func() error {
 		return runGoalSetter(cycle, tool)

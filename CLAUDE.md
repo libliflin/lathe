@@ -126,5 +126,7 @@ History lives inside `session/` (gitignored). The real audit trail is the squash
 - `.lathe/session/` is gitignored entirely — never blocks branch switches, never committed.
 - No fallback templates. Init succeeds or fails.
 - Smart decisions belong in the agent prompts, not the engine. The engine is plumbing.
-- Each step follows identical plumbing: branch → snapshot → CI status → agent → archive → safety net → PR → CI wait → merge. Teardown works at any point.
+- Each step follows identical plumbing: stale-PR sweep → branch → snapshot → CI status → agent → archive → safety net → PR → CI wait → merge. Teardown works at any point.
+- The stale-PR sweep (`resolveStalePRs`) merges any lathe PR whose CI has turned green and writes `session/stale-prs.txt` (with failure logs + handling instructions) for the ones still failing or pending. `lathe start` runs a one-shot version of this sweep (`preStartCleanup`) to inherit work from prior sessions.
+- Step branching: if the session's PR is still open at step start (previous step's CI didn't merge in time), the next step continues on the same branch. A single goal's rounds of dialog share one PR when CI is slow — on merge, the full arc squashes into one commit. At cycle boundaries, `runCycle` clears the session PR so each new goal always cuts fresh.
 - No VERDICT binary. The builder and verifier each have distinct lenses (creative synthesis / comparative scrutiny). Each round they contribute code or stand down plainly in the changelog. The engine reads convergence from `git rev-parse <base_branch>` before and after each step — no commit means no contribution. A round with neither contributing is convergence.
