@@ -100,15 +100,16 @@ templates/
 ```
 .lathe/session/              — Gitignored. Ephemeral engine runtime.
   session.json               — Branch name, PR number, base branch, mode
-  cycle.json                 — Current cycle number and phase
+  cycle.json                 — Current cycle's ID (timestamp) and phase
+  journey.md                 — Champion's output for the current cycle (stable during the cycle)
+  whiteboard.md              — Shared scratchpad for the current cycle (wiped at cycle boundary)
   snapshot.txt               — Latest snapshot output
-  changelog.md               — Latest changelog (verifier writes VERDICT here)
   theme.txt                  — Session theme (from --theme flag)
   rate-limited               — Sentinel for rate limit backoff
   lathe.pid                  — Engine process ID
-  logs/                      — Per-step agent logs (cycle-001-goal.log, cycle-001-build-1.log, etc.)
-  history/                   — Archived cycle changelogs and snapshots
-  champion-history/          — Archived champion reports (champion sees last 4)
+  logs/                      — Per-step agent logs (cycle-<timestamp>-champion.log, etc.)
+  history/<cycle-id>/        — Per-cycle archive: journey.md, whiteboard.md, snapshot.txt
+                              (cycle-id is a timestamp, e.g. 20260418-083045, globally unique)
 ```
 
 History lives inside `session/` (gitignored). The real audit trail is the squash merge commits on main.
@@ -131,5 +132,8 @@ History lives inside `session/` (gitignored). The real audit trail is the squash
 - Each step follows identical plumbing: stale-PR sweep → branch → snapshot → CI status → agent → archive → safety net → PR → CI wait → merge. Teardown works at any point.
 - The stale-PR sweep (`resolveStalePRs`) merges any lathe PR whose CI has turned green and writes `session/stale-prs.txt` (with failure logs + handling instructions) for the ones still failing or pending. `lathe start` runs a one-shot version of this sweep (`preStartCleanup`) to inherit work from prior sessions.
 - Step branching: if the session's PR is still open at step start (previous step's CI didn't merge in time), the next step continues on the same branch. A single goal's rounds of dialog share one PR when CI is slow — on merge, the full arc squashes into one commit. At cycle boundaries, `runCycle` clears the session PR so each new goal always cuts fresh.
-- No VERDICT binary. The champion runs first (one report per cycle), then the builder and verifier have a dialog with distinct lenses (creative synthesis / comparative scrutiny). Each round they contribute code or stand down plainly in the changelog. The engine reads convergence from `git rev-parse <base_branch>` before and after each step — no commit means no contribution. A round with neither contributing is convergence.
-- The champion writes to `.lathe/session/changelog.md` (ephemeral, archived as `champion-history/cycle-NNN.md`). Its reference playbook lives at `.lathe/agents/champion.md` and is read-only at runtime. Keeping these paths distinctly named prevents the agent from overwriting its own playbook.
+- No VERDICT binary. The champion runs first (one journey per cycle), then the builder and verifier have a dialog with distinct lenses (creative synthesis / comparative scrutiny). Each round they contribute code or stand down. The engine reads convergence from `git rev-parse <base_branch>` before and after each step — no commit means no contribution. A round with neither contributing is convergence.
+- **Two session files that agents touch each cycle:**
+  - `.lathe/session/journey.md` — the champion's artifact. Written once at the top of the cycle. Stable throughout. Builder and verifier read it every round. Archived to `history/<cycle-id>/journey.md` at cycle end.
+  - `.lathe/session/whiteboard.md` — a shared scratchpad. Any agent in the cycle's loop can read/write/edit/wipe it. Engine wipes it clean at each cycle boundary. Archived to `history/<cycle-id>/whiteboard.md` at cycle end. No prescribed format — treat it like a physical whiteboard in a meeting room.
+- Cycle IDs are timestamps (`YYYYMMDD-HHMMSS`, UTC) — globally unique across every `lathe start`. Agents can reference a cycle in code comments without fear that the identifier becomes stale when the counter resets on a new session.

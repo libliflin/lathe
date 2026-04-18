@@ -232,6 +232,21 @@ function fmtElapsed(sec) {
   return sec + "s";
 }
 
+// fmtCycleID renders a timestamp cycle ID (YYYYMMDD-HHMMSS, UTC) into a readable
+// local-time label: "08:30:45" when today, "Apr 18 08:30" when not.
+function fmtCycleID(id) {
+  if (!id) return '—';
+  const m = id.match(/^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})$/);
+  if (!m) return id;
+  const d = new Date(Date.UTC(+m[1], +m[2]-1, +m[3], +m[4], +m[5], +m[6]));
+  const now = new Date();
+  const sameDay = d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+  const t = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+  if (sameDay) return t;
+  return d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' +
+         d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+}
+
 function phaseClass(phase) {
   if (!phase) return 'phase-idle';
   if (phase.includes('champion') || phase.includes('goal')) return 'phase-champion';
@@ -286,7 +301,7 @@ function createCard(lathe) {
     m.append(v);
     return { wrap: m, value: v };
   };
-  const cycle = mkMetric('Cycle');
+  const cycle = mkMetric('Cycle Started');
   const uptime = mkMetric('Uptime');
 
   const pass1Wrap = el('div', 'metric');
@@ -353,7 +368,7 @@ function updateCard(entry, lathe) {
   r.rateLimit.style.display = lathe.rate_limited ? '' : 'none';
 
   // Metrics
-  setText(r.cycle, String(lathe.cycle || 0));
+  setText(r.cycle, fmtCycleID(lathe.cycle_id));
   setText(r.uptime, fmtElapsed(lathe.elapsed_seconds));
   r.pass1Text.nodeValue = passOneRate !== null ? passOneRate + '% ' : '— ';
   setText(r.pass1Sub, stats.pass_one + '/' + (totalScored || 0));
@@ -371,12 +386,12 @@ function updateCard(entry, lathe) {
   updateFoot(r.foot, lathe);
 
   // Flash the card only on cycle/phase change (not on every tick)
-  if (entry.prevCycle !== null && (entry.prevCycle !== lathe.cycle || entry.prevPhase !== lathe.phase)) {
+  if (entry.prevCycle !== null && (entry.prevCycle !== lathe.cycle_id || entry.prevPhase !== lathe.phase)) {
     entry.el.classList.remove('flash');
     void entry.el.offsetWidth;
     entry.el.classList.add('flash');
   }
-  entry.prevCycle = lathe.cycle;
+  entry.prevCycle = lathe.cycle_id;
   entry.prevPhase = lathe.phase;
 }
 

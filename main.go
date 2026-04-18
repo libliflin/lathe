@@ -12,14 +12,13 @@ import (
 
 // Global paths — set once in main, used everywhere.
 var (
-	latheDir         = ".lathe"
-	latheAgents      string
-	latheSession     string
-	latheHistory     string
-	championHistory  string
-	latheSkills      string
-	pidFile          string
-	sessionFile      string
+	latheDir     = ".lathe"
+	latheAgents  string
+	latheSession string
+	latheHistory string
+	latheSkills  string
+	pidFile      string
+	sessionFile  string
 
 	ciWaitTimeout    = 300   // seconds
 	roundsPerCycle   = 20    // oscillation cap — a dialog that hasn't converged by 20 rounds needs human review
@@ -30,7 +29,6 @@ func initPaths() {
 	latheAgents = filepath.Join(latheDir, "agents")
 	latheSession = filepath.Join(latheDir, "session")
 	latheHistory = filepath.Join(latheSession, "history")
-	championHistory = filepath.Join(latheSession, "champion-history")
 	latheSkills = filepath.Join(latheDir, "skills")
 	pidFile = filepath.Join(latheSession, "lathe.pid")
 	sessionFile = filepath.Join(latheSession, "session.json")

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 )
@@ -18,11 +19,20 @@ type Session struct {
 	StartedAt  string `json:"started_at"`
 }
 
-// CycleState tracks the current cycle number and phase.
+// CycleState tracks the current cycle's identity and phase.
+// ID is a timestamp (YYYYMMDD-HHMMSS) so it's globally unique across sessions —
+// agents referencing a cycle in code comments ("resolved in cycle-20260418-083045")
+// stay meaningful regardless of how many `lathe start`s happened.
 type CycleState struct {
-	Cycle     int    `json:"cycle"`
-	Status    string `json:"status"`
-	UpdatedAt string `json:"updatedAt"`
+	ID        string `json:"id"`
+	Phase     string `json:"phase"`
+	StartedAt string `json:"started_at"`
+	UpdatedAt string `json:"updated_at"`
+}
+
+// newCycleID generates a fresh timestamp-based ID for a cycle.
+func newCycleID() string {
+	return time.Now().UTC().Format("20060102-150405")
 }
 
 func readSession() (Session, error) {
@@ -43,28 +53,18 @@ func writeSession(s Session) error {
 	return os.WriteFile(sessionFile, data, 0644)
 }
 
-func getCycle() int {
-	cycleFile := filepath.Join(latheSession, "cycle.json")
-	data, err := os.ReadFile(cycleFile)
-	if err != nil {
-		return 1
-	}
+func readCycleState() (CycleState, error) {
 	var c CycleState
-	if err := json.Unmarshal(data, &c); err != nil {
-		return 1
+	data, err := os.ReadFile(filepath.Join(latheSession, "cycle.json"))
+	if err != nil {
+		return c, err
 	}
-	if c.Cycle < 1 {
-		return 1
-	}
-	return c.Cycle
+	err = json.Unmarshal(data, &c)
+	return c, err
 }
 
-func setCycle(cycle int, status string) error {
-	c := CycleState{
-		Cycle:     cycle,
-		Status:    status,
-		UpdatedAt: time.Now().UTC().Format(time.RFC3339),
-	}
+func writeCycleState(c CycleState) error {
+	c.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 	data, err := json.MarshalIndent(c, "", "  ")
 	if err != nil {
 		return err
@@ -72,40 +72,83 @@ func setCycle(cycle int, status string) error {
 	return os.WriteFile(filepath.Join(latheSession, "cycle.json"), data, 0644)
 }
 
-func archiveCycle(cycle int) error {
-	dir := filepath.Join(latheHistory, fmt.Sprintf("cycle-%03d", cycle))
+// setPhase updates the current cycle's phase in cycle.json.
+func setPhase(id, phase string) error {
+	c, _ := readCycleState()
+	if c.ID != id {
+		c = CycleState{ID: id, StartedAt: time.Now().UTC().Format(time.RFC3339)}
+	}
+	c.Phase = phase
+	return writeCycleState(c)
+}
+
+// wipeWhiteboard clears session/whiteboard.md so each cycle starts with a blank
+// shared scratchpad. The whiteboard is a room amenity — no instruction on who
+// uses it or when — but clean slate at cycle boundaries.
+func wipeWhiteboard() {
+	_ = os.WriteFile(filepath.Join(latheSession, "whiteboard.md"), []byte(""), 0644)
+}
+
+// archiveCycle snapshots a cycle's journey, whiteboard, and snapshot.txt into
+// session/history/<id>/ so past cycles can be inspected and the champion can
+// read past journeys as context for choosing the next goal.
+func archiveCycle(id string) error {
+	dir := filepath.Join(latheHistory, id)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
 	}
-	for _, name := range []string{"snapshot.txt", "changelog.md"} {
+	for _, name := range []string{"snapshot.txt", "journey.md", "whiteboard.md"} {
 		src := filepath.Join(latheSession, name)
-		if _, err := os.Stat(src); err == nil {
-			data, err := os.ReadFile(src)
-			if err != nil {
-				return err
-			}
-			if err := os.WriteFile(filepath.Join(dir, name), data, 0644); err != nil {
-				return err
-			}
+		if _, err := os.Stat(src); err != nil {
+			continue
+		}
+		data, err := os.ReadFile(src)
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(filepath.Join(dir, name), data, 0644); err != nil {
+			return err
 		}
 	}
 	return nil
 }
 
-func archiveChampion(cycle int) error {
-	if err := os.MkdirAll(championHistory, 0755); err != nil {
-		return err
-	}
-	src := filepath.Join(latheSession, "changelog.md")
-	if _, err := os.Stat(src); err != nil {
-		return nil // no changelog to archive
-	}
-	data, err := os.ReadFile(src)
+// recentJourneys returns the last n archived journey.md contents, oldest first,
+// keyed by the cycle IDs that produced them. Used by the champion to see recent
+// stakeholder rotations and avoid repeating themselves.
+type archivedJourney struct {
+	ID      string
+	Content string
+}
+
+func recentJourneys(n int) []archivedJourney {
+	entries, err := os.ReadDir(latheHistory)
 	if err != nil {
-		return err
+		return nil
 	}
-	dst := filepath.Join(championHistory, fmt.Sprintf("cycle-%03d.md", cycle))
-	return os.WriteFile(dst, data, 0644)
+	var ids []string
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(latheHistory, e.Name(), "journey.md")); err == nil {
+			ids = append(ids, e.Name())
+		}
+	}
+	// Timestamp IDs sort lexicographically in chronological order.
+	sort.Strings(ids)
+	if len(ids) > n {
+		ids = ids[len(ids)-n:]
+	}
+	var out []archivedJourney
+	for _, id := range ids {
+		data, err := os.ReadFile(filepath.Join(latheHistory, id, "journey.md"))
+		if err != nil {
+			continue
+		}
+		out = append(out, archivedJourney{ID: id, Content: string(data)})
+	}
+	return out
 }
 
 // appendToFile appends text to a file, creating it if needed.
@@ -124,9 +167,6 @@ func initSessionState(mode, theme string) error {
 		return err
 	}
 	if err := os.MkdirAll(latheHistory, 0755); err != nil {
-		return err
-	}
-	if err := os.MkdirAll(championHistory, 0755); err != nil {
 		return err
 	}
 

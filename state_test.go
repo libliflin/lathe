@@ -1,9 +1,9 @@
 package main
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -15,13 +15,11 @@ func setupTestState(t *testing.T) string {
 	latheDir = filepath.Join(dir, ".lathe")
 	latheSession = filepath.Join(latheDir, "session")
 	latheHistory = filepath.Join(latheSession, "history")
-	championHistory = filepath.Join(latheSession, "champion-history")
 	sessionFile = filepath.Join(latheSession, "session.json")
 	latheSkills = filepath.Join(latheDir, "skills")
 
 	os.MkdirAll(latheSession, 0755)
 	os.MkdirAll(latheHistory, 0755)
-	os.MkdirAll(championHistory, 0755)
 
 	return dir
 }
@@ -57,28 +55,23 @@ func TestReadWriteSession(t *testing.T) {
 	}
 }
 
-func TestGetSetCycle(t *testing.T) {
+func TestSetPhase(t *testing.T) {
 	setupTestState(t)
 
-	// Default should be 1 when no file exists
-	if got := getCycle(); got != 1 {
-		t.Errorf("getCycle() = %d, want 1", got)
+	id := "20260418-120000"
+	if err := setPhase(id, "champion"); err != nil {
+		t.Fatalf("setPhase: %v", err)
 	}
 
-	if err := setCycle(3, "running"); err != nil {
-		t.Fatalf("setCycle: %v", err)
+	c, err := readCycleState()
+	if err != nil {
+		t.Fatalf("readCycleState: %v", err)
 	}
-
-	if got := getCycle(); got != 3 {
-		t.Errorf("getCycle() = %d, want 3", got)
+	if c.ID != id {
+		t.Errorf("ID = %q, want %q", c.ID, id)
 	}
-
-	// Verify status in file
-	data, _ := os.ReadFile(filepath.Join(latheSession, "cycle.json"))
-	var c CycleState
-	json.Unmarshal(data, &c)
-	if c.Status != "running" {
-		t.Errorf("Status = %q, want %q", c.Status, "running")
+	if c.Phase != "champion" {
+		t.Errorf("Phase = %q, want %q", c.Phase, "champion")
 	}
 	if c.UpdatedAt == "" {
 		t.Error("UpdatedAt should not be empty")
@@ -88,56 +81,57 @@ func TestGetSetCycle(t *testing.T) {
 func TestArchiveCycle(t *testing.T) {
 	setupTestState(t)
 
-	// Write files to archive
 	os.WriteFile(filepath.Join(latheSession, "snapshot.txt"), []byte("test snapshot"), 0644)
-	os.WriteFile(filepath.Join(latheSession, "changelog.md"), []byte("test changelog"), 0644)
+	os.WriteFile(filepath.Join(latheSession, "journey.md"), []byte("test journey"), 0644)
+	os.WriteFile(filepath.Join(latheSession, "whiteboard.md"), []byte("test whiteboard"), 0644)
 
-	if err := archiveCycle(1); err != nil {
+	id := "20260418-120000"
+	if err := archiveCycle(id); err != nil {
 		t.Fatalf("archiveCycle: %v", err)
 	}
 
-	// Check archived files
-	dir := filepath.Join(latheHistory, "cycle-001")
-	data, err := os.ReadFile(filepath.Join(dir, "snapshot.txt"))
-	if err != nil {
-		t.Fatalf("read archived snapshot: %v", err)
-	}
-	if string(data) != "test snapshot" {
-		t.Errorf("snapshot = %q, want %q", string(data), "test snapshot")
-	}
-
-	data, err = os.ReadFile(filepath.Join(dir, "changelog.md"))
-	if err != nil {
-		t.Fatalf("read archived changelog: %v", err)
-	}
-	if string(data) != "test changelog" {
-		t.Errorf("changelog = %q, want %q", string(data), "test changelog")
+	dir := filepath.Join(latheHistory, id)
+	for _, name := range []string{"snapshot.txt", "journey.md", "whiteboard.md"} {
+		data, err := os.ReadFile(filepath.Join(dir, name))
+		if err != nil {
+			t.Fatalf("read archived %s: %v", name, err)
+		}
+		if !strings.Contains(string(data), "test ") {
+			t.Errorf("%s missing expected content: %q", name, string(data))
+		}
 	}
 }
 
-func TestArchiveChampion(t *testing.T) {
+func TestRecentJourneys(t *testing.T) {
 	setupTestState(t)
 
-	os.WriteFile(filepath.Join(latheSession, "changelog.md"), []byte("champion: fix tests"), 0644)
-
-	if err := archiveChampion(2); err != nil {
-		t.Fatalf("archiveChampion: %v", err)
+	ids := []string{"20260418-100000", "20260418-110000", "20260418-120000"}
+	for _, id := range ids {
+		dir := filepath.Join(latheHistory, id)
+		os.MkdirAll(dir, 0755)
+		os.WriteFile(filepath.Join(dir, "journey.md"), []byte("journey from "+id), 0644)
 	}
 
-	data, err := os.ReadFile(filepath.Join(championHistory, "cycle-002.md"))
-	if err != nil {
-		t.Fatalf("read archived champion report: %v", err)
+	got := recentJourneys(2)
+	if len(got) != 2 {
+		t.Fatalf("len = %d, want 2", len(got))
 	}
-	if string(data) != "champion: fix tests" {
-		t.Errorf("report = %q, want %q", string(data), "champion: fix tests")
+	if got[0].ID != ids[1] || got[1].ID != ids[2] {
+		t.Errorf("IDs = %v, want last two of %v", []string{got[0].ID, got[1].ID}, ids)
 	}
 }
 
-func TestArchiveChampionNoChangelog(t *testing.T) {
+func TestWipeWhiteboard(t *testing.T) {
 	setupTestState(t)
 
-	// Should not error when no changelog exists
-	if err := archiveChampion(1); err != nil {
-		t.Fatalf("archiveChampion with no changelog: %v", err)
+	path := filepath.Join(latheSession, "whiteboard.md")
+	os.WriteFile(path, []byte("some content"), 0644)
+	wipeWhiteboard()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read whiteboard: %v", err)
+	}
+	if len(data) != 0 {
+		t.Errorf("whiteboard not wiped: %q", string(data))
 	}
 }

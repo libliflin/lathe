@@ -4,12 +4,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 )
 
-func runChampion(cycle int, tool string) error {
-	log("Running champion (cycle %d) ...", cycle)
+func runChampion(id string, tool string) error {
+	log("Running champion (cycle %s) ...", id)
 
 	var b strings.Builder
 
@@ -17,24 +16,18 @@ func runChampion(cycle int, tool string) error {
 	b.WriteString(readFileOr(filepath.Join(latheAgents, "champion.md"), ""))
 	b.WriteString("\n\n")
 
-	// Common: skills, refs, theme, snapshot
+	// Common: skills, refs, brand, theme, snapshot
 	b.WriteString(assembleCommon())
 
 	// Session context
 	b.WriteString(assembleSessionContext())
 
-	// Last 4 cycles' reports for context
-	if entries, err := filepath.Glob(filepath.Join(championHistory, "*.md")); err == nil && len(entries) > 0 {
-		sort.Strings(entries)
-		start := 0
-		if len(entries) > 4 {
-			start = len(entries) - 4
-		}
-		b.WriteString("---\n# Previous Cycles (last 4)\n\n")
-		for _, f := range entries[start:] {
-			name := strings.TrimSuffix(filepath.Base(f), ".md")
-			b.WriteString("## " + name + "\n")
-			b.WriteString(readFileOr(f, ""))
+	// Last 4 journeys (from session/history/<id>/journey.md)
+	if journeys := recentJourneys(4); len(journeys) > 0 {
+		b.WriteString("---\n# Previous Journeys (last 4 cycles)\n\n")
+		for _, j := range journeys {
+			b.WriteString("## cycle " + j.ID + "\n")
+			b.WriteString(j.Content)
 			b.WriteString("\n\n")
 		}
 	}
@@ -48,6 +41,9 @@ func runChampion(cycle int, tool string) error {
 	b.WriteString(gitLog)
 	b.WriteString("\n```\n\n")
 
+	// Whiteboard — shared scratchpad, fresh at the start of each cycle.
+	b.WriteString(assembleWhiteboard())
+
 	// Stale PR context — orphans inherited from the previous cycle or session
 	stalePRsFile := filepath.Join(latheSession, "stale-prs.txt")
 	if data, err := os.ReadFile(stalePRsFile); err == nil && len(data) > 0 {
@@ -59,18 +55,18 @@ func runChampion(cycle int, tool string) error {
 	// Instructions
 	b.WriteString("---\n# Your Task\n\n")
 	b.WriteString("You are the champion. Each cycle:\n\n")
-	b.WriteString("1. When the floor is violated (CI red, build broken, tests failing), target that in the report — skip straight to step 4.\n")
-	b.WriteString("2. When the Stale Lathe PRs section is present above, weigh it in: is the stuck work the right next target, or is it superseded? The report can target finishing a stale PR, or instruct the builder to close it as part of this cycle's fresh direction.\n")
-	b.WriteString("3. Otherwise, pick one stakeholder (rotate based on Previous Cycles — prefer one under-served recently) and name them.\n")
+	b.WriteString("1. When the floor is violated (CI red, build broken, tests failing), target that in the journey — skip straight to step 4.\n")
+	b.WriteString("2. When the Stale Lathe PRs section is present above, weigh it in: is the stuck work the right next target, or is it superseded?\n")
+	b.WriteString("3. Otherwise, pick one stakeholder (rotate based on Previous Journeys — prefer one under-served recently) and name them.\n")
 	b.WriteString("4. **Become that person.** Walk their first-encounter journey — run the commands, read the output, hit the friction. Notice the emotional signal your playbook defined for them. Walking is the role; it's what earns you the standing to name what matters.\n")
-	b.WriteString("5. Write your report to `.lathe/session/changelog.md` using the Output Format from your playbook (champion.md). Your reference doc `.lathe/champion.md` is not the output target — it is stable and you read from it, not write to it.\n\n")
-	b.WriteString("The engine archives your report to `.lathe/session/champion-history/` for the builder.\n\n")
+	b.WriteString("5. Write your journey to `.lathe/session/journey.md` using the Output Format from your playbook. This file is your artifact for the whole cycle — the builder and verifier will read it every round. Write it once, leave it be.\n\n")
+	b.WriteString(fmt.Sprintf("The engine will archive your journey to `.lathe/session/history/%s/journey.md` when the cycle completes.\n\n", id))
 
-	return invokeAgent(b.String(), cycle, "champion", tool)
+	return invokeAgent(b.String(), id, "champion", tool)
 }
 
-func runBuilder(cycle, round int, tool string) error {
-	log("Running builder (cycle %d, round %d) ...", cycle, round)
+func runBuilder(id string, round int, tool string) error {
+	log("Running builder (cycle %s, round %d) ...", id, round)
 
 	var b strings.Builder
 
@@ -78,36 +74,24 @@ func runBuilder(cycle, round int, tool string) error {
 	b.WriteString(readFileOr(filepath.Join(latheAgents, "builder.md"), ""))
 	b.WriteString("\n\n")
 
-	// Common: skills, refs, theme, snapshot
+	// Common: skills, refs, brand, theme, snapshot
 	b.WriteString(assembleCommon())
 
 	// Session context
 	b.WriteString(assembleSessionContext())
 
-	// Current champion report
-	b.WriteString("---\n# Champion's Report (this cycle)\n\n")
-	reportFile := filepath.Join(championHistory, fmt.Sprintf("cycle-%03d.md", cycle))
-	changelogFile := filepath.Join(latheSession, "changelog.md")
-	if data, err := os.ReadFile(reportFile); err == nil {
-		b.Write(data)
-	} else if data, err := os.ReadFile(changelogFile); err == nil {
+	// Champion's journey for this cycle (stable, read every round)
+	b.WriteString("---\n# Champion's Journey (this cycle)\n\n")
+	journeyFile := filepath.Join(latheSession, "journey.md")
+	if data, err := os.ReadFile(journeyFile); err == nil {
 		b.Write(data)
 	} else {
-		b.WriteString("(no champion report found for this cycle — use your best judgment based on the snapshot)")
+		b.WriteString("(no journey written yet — champion may not have run; use your best judgment based on the snapshot)")
 	}
 	b.WriteString("\n\n")
 
-	// Verifier contribution from previous round (if any)
-	if round > 1 {
-		changelogFile := filepath.Join(latheSession, "changelog.md")
-		if feedback, err := os.ReadFile(changelogFile); err == nil {
-			b.WriteString("---\n# Verifier's Contribution (previous round)\n\n")
-			b.WriteString("The verifier looked at your work from the comparative lens and either added what they saw missing or stood down. Read their changelog. Their code contributions are already in the repo — run `git log --oneline -10` to see recent commits.\n\n")
-			b.WriteString("Respond from your creative lens: refine their additions, extend the work, or recognize that the work stands complete and make no commit this round.\n\n")
-			b.Write(feedback)
-			b.WriteString("\n\n")
-		}
-	}
+	// Whiteboard — shared scratchpad across this cycle
+	b.WriteString(assembleWhiteboard())
 
 	// CI failure details (if any)
 	ciFailFile := filepath.Join(latheSession, "ci-failure.txt")
@@ -130,19 +114,19 @@ func runBuilder(cycle, round int, tool string) error {
 	// Instructions
 	b.WriteString("---\n# Your Task\n\n")
 	if round == 1 {
-		b.WriteString("Bring the goal into being. Implement, validate, commit, push.\n")
+		b.WriteString("Bring the champion's journey into being. Implement, validate, commit, push.\n")
 	} else {
-		b.WriteString("Continue the dialog. Read the verifier's contribution from the previous round. From your creative lens, decide: refine, extend, or stand down. When you have something worth adding, commit and push it. When the work stands complete in your view, write the changelog with \"Applied: Nothing this round — the verifier's additions complete the work from my lens\" and skip the commit.\n")
+		b.WriteString("Continue the dialog. Read the whiteboard and the recent commits to see what the verifier added. From your creative lens, decide: refine, extend, or stand down. When you have something worth adding, commit and push it. When the work stands complete in your view, make no commit this round.\n")
 	}
 	b.WriteString("If CI is failing, fix CI first — that's always top priority.\n")
 	b.WriteString("If the Stale Lathe PRs section is present above, handle those first — they block progress on this cycle's dialog.\n\n")
-	b.WriteString("**Changelog:** Write a changelog to `.lathe/session/changelog.md` describing what you did this round (or explaining why you stood down).\n\n")
+	b.WriteString("The whiteboard is a shared scratchpad for this cycle — other agents will see what you leave on it. Use it (or not) however you see fit.\n\n")
 
-	return invokeAgent(b.String(), cycle, fmt.Sprintf("build-%d", round), tool)
+	return invokeAgent(b.String(), id, fmt.Sprintf("build-%d", round), tool)
 }
 
-func runVerifier(cycle, round int, tool string) error {
-	log("Running verifier (cycle %d, round %d) ...", cycle, round)
+func runVerifier(id string, round int, tool string) error {
+	log("Running verifier (cycle %s, round %d) ...", id, round)
 
 	var b strings.Builder
 
@@ -150,16 +134,20 @@ func runVerifier(cycle, round int, tool string) error {
 	b.WriteString(readFileOr(filepath.Join(latheAgents, "verifier.md"), ""))
 	b.WriteString("\n\n")
 
-	// Common: skills, refs, theme, snapshot
+	// Common: skills, refs, brand, theme, snapshot
 	b.WriteString(assembleCommon())
 
 	// Session context
 	b.WriteString(assembleSessionContext())
 
-	// Champion's report for this cycle
-	b.WriteString("---\n# Champion's Report (this cycle)\n\n")
-	reportFile := filepath.Join(championHistory, fmt.Sprintf("cycle-%03d.md", cycle))
-	b.WriteString(readFileOr(reportFile, "(no champion report found)"))
+	// Champion's journey for this cycle (stable, read every round)
+	b.WriteString("---\n# Champion's Journey (this cycle)\n\n")
+	journeyFile := filepath.Join(latheSession, "journey.md")
+	if data, err := os.ReadFile(journeyFile); err == nil {
+		b.Write(data)
+	} else {
+		b.WriteString("(no journey found)")
+	}
 	b.WriteString("\n\n")
 
 	// Builder's diff
@@ -170,6 +158,9 @@ func runVerifier(cycle, round int, tool string) error {
 	}
 	b.WriteString(diff)
 	b.WriteString("\n```\n\n")
+
+	// Whiteboard — shared scratchpad across this cycle
+	b.WriteString(assembleWhiteboard())
 
 	// CI failure details (if any)
 	ciFailFile := filepath.Join(latheSession, "ci-failure.txt")
@@ -191,25 +182,10 @@ func runVerifier(cycle, round int, tool string) error {
 
 	// Instructions
 	b.WriteString("---\n# Your Task\n\n")
-	b.WriteString("Continue the dialog. Read the builder's contribution this round and compare it against the goal from your scrutinizing lens. Ask: what's here, what was asked, where's the gap? Run the tests. Exercise the change. Try the hard cases.\n\n")
-	b.WriteString("When you see gaps worth adding code to close, commit them — tests, edge cases, error handling, fills. When the work stands complete from your comparative lens, write the changelog with \"Added: Nothing this round — the work holds up against the goal from my lens\" and skip the commit.\n\n")
-	b.WriteString("**Changelog:** Write `.lathe/session/changelog.md` using this template:\n\n")
-	b.WriteString("```\n")
-	b.WriteString(fmt.Sprintf("# Verification — Cycle %d, Round %d (Verifier)\n", cycle, round))
-	b.WriteString("\n")
-	b.WriteString("## What I compared\n")
-	b.WriteString("(goal on one side, code on the other — what you read, ran, witnessed)\n")
-	b.WriteString("\n")
-	b.WriteString("## What's here, what was asked\n")
-	b.WriteString("(the gap from your comparative lens, or \"matches: the work holds up against the goal\")\n")
-	b.WriteString("\n")
-	b.WriteString("## What I added\n")
-	b.WriteString("(code you committed this round, or \"Nothing this round — the work holds up against the goal from my lens\")\n")
-	b.WriteString("\n")
-	b.WriteString("## Notes for the champion\n")
-	b.WriteString("(structural follow-ups spotted during scrutiny, or \"None\")\n")
-	b.WriteString("```\n\n")
-	b.WriteString("The cycle converges when a round passes with neither of you committing — the engine detects this automatically. No VERDICT line needed; your contribution (or stand-down) speaks for itself.\n\n")
+	b.WriteString("Continue the dialog. Read the champion's journey and the builder's changes. Compare from your scrutinizing lens: what's here, what was asked, where's the gap? Run the tests. Exercise the change. Try the hard cases.\n\n")
+	b.WriteString("When you see gaps worth adding code to close, commit them — tests, edge cases, error handling, fills. When the work stands complete from your comparative lens, make no commit this round.\n\n")
+	b.WriteString("The whiteboard is a shared scratchpad for this cycle — other agents will see what you leave on it. Use it (or not) however you see fit.\n\n")
+	b.WriteString("The cycle converges when a round passes with neither of you committing — the engine detects this automatically.\n\n")
 
-	return invokeAgent(b.String(), cycle, fmt.Sprintf("verify-%d", round), tool)
+	return invokeAgent(b.String(), id, fmt.Sprintf("verify-%d", round), tool)
 }

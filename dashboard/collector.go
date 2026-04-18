@@ -20,15 +20,16 @@ type Lathe struct {
 	BaseBranch      string     `json:"base_branch"`
 	PRNumber        string     `json:"pr_number,omitempty"`
 	Mode            string     `json:"mode"`
-	Cycle           int        `json:"cycle"`
-	Phase           string     `json:"phase,omitempty"`
-	ElapsedSeconds  int64      `json:"elapsed_seconds"`
-	RateLimited     bool       `json:"rate_limited"`
-	RecentCommits   []Commit   `json:"recent_commits"`
-	RecentLogs      []LogLine  `json:"recent_logs"`
-	CycleStats      CycleStats `json:"cycle_stats"`
-	LatestChangelog string     `json:"latest_changelog,omitempty"`
-	RepoURL         string     `json:"repo_url,omitempty"`
+	CycleID        string     `json:"cycle_id,omitempty"` // timestamp-based ID e.g. 20260418-083045
+	Phase          string     `json:"phase,omitempty"`
+	ElapsedSeconds int64      `json:"elapsed_seconds"`
+	RateLimited    bool       `json:"rate_limited"`
+	RecentCommits  []Commit   `json:"recent_commits"`
+	RecentLogs     []LogLine  `json:"recent_logs"`
+	CycleStats     CycleStats `json:"cycle_stats"`
+	Journey        string     `json:"journey,omitempty"`    // champion's journey for the current cycle
+	Whiteboard     string     `json:"whiteboard,omitempty"` // shared scratchpad (current state)
+	RepoURL        string     `json:"repo_url,omitempty"`
 }
 
 type Commit struct {
@@ -112,13 +113,23 @@ func readLathe(pid int) (Lathe, bool) {
 	}
 
 	if cdata, err := os.ReadFile(filepath.Join(cwd, ".lathe", "session", "cycle.json")); err == nil {
-		var c struct {
-			Cycle  int    `json:"cycle"`
-			Status string `json:"status"`
+		// New shape: {id, phase, started_at, updated_at}
+		var cNew struct {
+			ID    string `json:"id"`
+			Phase string `json:"phase"`
 		}
-		if err := json.Unmarshal(cdata, &c); err == nil {
-			l.Cycle = c.Cycle
-			l.Phase = c.Status
+		if err := json.Unmarshal(cdata, &cNew); err == nil && (cNew.ID != "" || cNew.Phase != "") {
+			l.CycleID = cNew.ID
+			l.Phase = cNew.Phase
+		} else {
+			// Legacy shape: {cycle, status} — handle old lathes still running
+			var cOld struct {
+				Cycle  int    `json:"cycle"`
+				Status string `json:"status"`
+			}
+			if err := json.Unmarshal(cdata, &cOld); err == nil {
+				l.Phase = cOld.Status
+			}
 		}
 	}
 
@@ -131,7 +142,8 @@ func readLathe(pid int) (Lathe, bool) {
 	l.RecentCommits = getRecentCommits(cwd, 5)
 	l.RecentLogs = tailStreamLog(cwd, 40)
 	l.CycleStats = computeCycleStats(cwd)
-	l.LatestChangelog = readLatestChangelog(cwd)
+	l.Journey = readSessionFile(cwd, "journey.md", 2000)
+	l.Whiteboard = readSessionFile(cwd, "whiteboard.md", 2000)
 	l.RepoURL = getRepoURL(cwd)
 
 	return l, true
@@ -309,15 +321,16 @@ func computeCycleStats(cwd string) CycleStats {
 	return stats
 }
 
-func readLatestChangelog(cwd string) string {
-	path := filepath.Join(cwd, ".lathe", "session", "changelog.md")
-	data, err := os.ReadFile(path)
+// readSessionFile returns the truncated contents of a named file inside the
+// project's .lathe/session/ directory. Empty when the file is missing.
+func readSessionFile(cwd, name string, maxBytes int) string {
+	data, err := os.ReadFile(filepath.Join(cwd, ".lathe", "session", name))
 	if err != nil {
 		return ""
 	}
 	s := string(data)
-	if len(s) > 2000 {
-		s = s[:2000] + "\n... (truncated)"
+	if len(s) > maxBytes {
+		s = s[:maxBytes] + "\n... (truncated)"
 	}
 	return s
 }

@@ -16,16 +16,18 @@ var errMaxRounds = errors.New("oscillation cap reached without convergence")
 // runCycle executes one full cycle: champion → dialog between builder and verifier.
 // Each round both contribute (or stand down). The cycle converges when a round passes
 // with neither committing. roundsPerCycle caps the dialog to prevent oscillation.
-func runCycle(cycle int, tool string) error {
+// id is the cycle's timestamp-based identity, stable for this cycle and unique across
+// all of history (past, present, future) — safe to reference in code comments.
+func runCycle(id string, tool string) error {
 	fmt.Println()
 	fmt.Println("═══════════════════════════════════════════════")
-	fmt.Printf("  CYCLE %d — %s\n", cycle, time.Now().Format("2006-01-02 15:04:05"))
+	fmt.Printf("  CYCLE %s — %s\n", id, time.Now().Format("2006-01-02 15:04:05"))
 	fmt.Println("═══════════════════════════════════════════════")
 	fmt.Println()
 
-	// A new cycle is a new goal. Clear any PR left active from the previous cycle
-	// so the goal step cuts a fresh branch. The orphan (if any) stays visible to
-	// the agents via stale-prs.txt.
+	// New cycle: a fresh whiteboard for the new team, and clear any PR left active
+	// from the previous cycle so the champion step cuts a fresh branch.
+	wipeWhiteboard()
 	if s, err := readSession(); err == nil && (s.Branch != "" || s.PRNumber != "") {
 		s.Branch = ""
 		s.PRNumber = ""
@@ -34,12 +36,11 @@ func runCycle(cycle int, tool string) error {
 
 	// --- Champion ---
 	resolveStalePRs()
-	if err := runStep(cycle, "champion", tool, func() error {
-		return runChampion(cycle, tool)
+	if err := runStep(id, "champion", tool, func() error {
+		return runChampion(id, tool)
 	}); err != nil {
 		return err
 	}
-	archiveChampion(cycle)
 
 	baseBranch := getBaseBranch()
 
@@ -51,8 +52,8 @@ func runCycle(cycle int, tool string) error {
 	for round := 1; round <= roundsPerCycle; round++ {
 		resolveStalePRs()
 		builderHead := getHead(baseBranch)
-		if err := runStep(cycle, fmt.Sprintf("round-%d-build", round), tool, func() error {
-			return runBuilder(cycle, round, tool)
+		if err := runStep(id, fmt.Sprintf("round-%d-build", round), tool, func() error {
+			return runBuilder(id, round, tool)
 		}); err != nil {
 			return err
 		}
@@ -60,8 +61,8 @@ func runCycle(cycle int, tool string) error {
 
 		resolveStalePRs()
 		verifierHead := getHead(baseBranch)
-		if err := runStep(cycle, fmt.Sprintf("round-%d-verify", round), tool, func() error {
-			return runVerifier(cycle, round, tool)
+		if err := runStep(id, fmt.Sprintf("round-%d-verify", round), tool, func() error {
+			return runVerifier(id, round, tool)
 		}); err != nil {
 			return err
 		}
@@ -73,8 +74,8 @@ func runCycle(cycle int, tool string) error {
 			log("Neither contributed but CI failed — re-running verifier to investigate.")
 			resolveStalePRs()
 			ciRerunHead := getHead(baseBranch)
-			if err := runStep(cycle, fmt.Sprintf("round-%d-verify-ci", round), tool, func() error {
-				return runVerifier(cycle, round, tool)
+			if err := runStep(id, fmt.Sprintf("round-%d-verify-ci", round), tool, func() error {
+				return runVerifier(id, round, tool)
 			}); err != nil {
 				return err
 			}
@@ -88,7 +89,7 @@ func runCycle(cycle int, tool string) error {
 			if openPRs := countOpenLathePRs(); openPRs > 0 {
 				log("No commits this round but %d lathe PR(s) still open — continuing dialog.", openPRs)
 			} else {
-				log("Convergence reached at round %d. Both lenses stood down — goal complete.", round)
+				log("Convergence reached at round %d. Both lenses stood down — cycle complete.", round)
 				break
 			}
 		}
@@ -106,14 +107,16 @@ func runCycle(cycle int, tool string) error {
 			log("%s — dialog continues (round %d/%d) ...", who, round+1, roundsPerCycle)
 		} else {
 			log("Oscillation cap reached (%d rounds) — entering error state for human review.", roundsPerCycle)
-			writeErrorState(cycle, round, "oscillation-cap",
+			writeErrorState(id, round, "oscillation-cap",
 				fmt.Sprintf("Builder and verifier did not converge after %d rounds of dialog. Both kept contributing without reaching a stable state.", roundsPerCycle))
-			setCycle(cycle, "error")
+			_ = setPhase(id, "error")
+			archiveCycle(id)
 			return errMaxRounds
 		}
 	}
 
-	setCycle(cycle, "complete")
+	_ = setPhase(id, "complete")
+	archiveCycle(id)
 	return nil
 }
 
@@ -128,25 +131,25 @@ func getBaseBranch() string {
 // writeErrorState captures everything a human (or a Claude Code session) needs
 // to diagnose and unstick a lathe that couldn't converge. Written to
 // .lathe/session/error.md, read by `lathe status` afterwards.
-func writeErrorState(cycle, round int, kind, detail string) {
+func writeErrorState(id string, round int, kind, detail string) {
 	var b strings.Builder
 
 	fmt.Fprintf(&b, "# Lathe Error State\n\n")
 	fmt.Fprintf(&b, "**When:** %s\n", time.Now().Format("2006-01-02 15:04:05"))
-	fmt.Fprintf(&b, "**Cycle:** %d, Round: %d\n", cycle, round)
+	fmt.Fprintf(&b, "**Cycle:** %s (round %d)\n", id, round)
 	fmt.Fprintf(&b, "**Kind:** %s\n\n", kind)
 	fmt.Fprintf(&b, "## What happened\n\n%s\n\n", detail)
 
-	latestReport := filepath.Join(championHistory, fmt.Sprintf("cycle-%03d.md", cycle))
-	if data, err := os.ReadFile(latestReport); err == nil {
-		b.WriteString("## Champion's report for the stuck cycle\n\n")
+	journey := filepath.Join(latheSession, "journey.md")
+	if data, err := os.ReadFile(journey); err == nil {
+		b.WriteString("## Champion's journey for the stuck cycle\n\n")
 		b.Write(data)
 		b.WriteString("\n\n")
 	}
 
-	changelog := filepath.Join(latheSession, "changelog.md")
-	if data, err := os.ReadFile(changelog); err == nil {
-		b.WriteString("## Last round's changelog\n\n")
+	whiteboard := filepath.Join(latheSession, "whiteboard.md")
+	if data, err := os.ReadFile(whiteboard); err == nil && len(strings.TrimSpace(string(data))) > 0 {
+		b.WriteString("## Whiteboard (end state)\n\n")
 		b.Write(data)
 		b.WriteString("\n\n")
 	}
@@ -161,7 +164,7 @@ func writeErrorState(cycle, round int, kind, detail string) {
 	b.WriteString("Open Claude Code in this project directory and ask it to investigate. Tell it to read this file and the stale-prs.txt context.\n\n")
 	b.WriteString("Typical resolutions:\n")
 	b.WriteString("- **PRs going in circles**: close them (`gh pr close <N> --delete-branch`). The next cycle's champion will pick a new angle.\n")
-	b.WriteString("- **Report was malformed**: close the related PRs; lathe's next cycle will pick a fresh direction.\n")
+	b.WriteString("- **Journey was malformed**: close the related PRs; lathe's next cycle will pick a fresh direction.\n")
 	b.WriteString("- **Real blocker** (a dep conflict, a flaky test, a credential issue): fix it in the repo, then restart.\n\n")
 	b.WriteString("When you've resolved things: `lathe start` to resume. `preStartCleanup` will merge any greens that appeared, leave the rest for the new session's agents to see.\n")
 
@@ -188,7 +191,7 @@ func classifyContribution(beforeSHA, afterSHA, role string) bool {
 }
 
 // onlyNonSubstantiveChanges reports whether every file touched between two SHAs
-// is either agent metadata (changelog expression under .lathe/, changelog files)
+// is either agent metadata (under .lathe/, changelog/whiteboard/journey filenames)
 // or gitignored (force-added build artifacts, caches, etc). The `.gitignore` is
 // the canonical "don't commit this" declaration — anything that slipped past it
 // via `git add -f` counts as non-substantive by definition.
@@ -202,7 +205,7 @@ func onlyNonSubstantiveChanges(fromSHA, toSHA string) (string, bool) {
 	if trimmed == "" {
 		return "", false
 	}
-	sawChangelog := false
+	sawMeta := false
 	sawIgnored := false
 	for _, f := range strings.Split(trimmed, "\n") {
 		f = strings.TrimSpace(f)
@@ -210,8 +213,8 @@ func onlyNonSubstantiveChanges(fromSHA, toSHA string) (string, bool) {
 			continue
 		}
 		switch classifyPath(f) {
-		case pathChangelog:
-			sawChangelog = true
+		case pathMeta:
+			sawMeta = true
 		case pathIgnored:
 			sawIgnored = true
 		case pathSubstantive:
@@ -219,10 +222,10 @@ func onlyNonSubstantiveChanges(fromSHA, toSHA string) (string, bool) {
 		}
 	}
 	switch {
-	case sawChangelog && sawIgnored:
-		return "changelog + gitignored files", true
-	case sawChangelog:
-		return "changelog / lathe-metadata only", true
+	case sawMeta && sawIgnored:
+		return "lathe metadata + gitignored files", true
+	case sawMeta:
+		return "lathe metadata only (whiteboard/journey/changelog-style)", true
 	case sawIgnored:
 		return "only gitignored files (likely force-added build artifacts)", true
 	default:
@@ -234,15 +237,16 @@ type pathKind int
 
 const (
 	pathSubstantive pathKind = iota
-	pathChangelog
+	pathMeta
 	pathIgnored
 )
 
-// classifyPath bins a touched file path. Order matters: changelog/.lathe paths
-// are tagged first so they don't muddle the "ignored" reason in messaging.
+// classifyPath bins a touched file path. Order matters: meta paths (lathe internals,
+// whiteboard/journey/changelog-style filenames) are tagged first so they don't
+// muddle the "ignored" reason in messaging.
 func classifyPath(path string) pathKind {
 	if strings.HasPrefix(path, ".lathe/") {
-		return pathChangelog
+		return pathMeta
 	}
 	base := path
 	if i := strings.LastIndex(base, "/"); i >= 0 {
@@ -253,9 +257,11 @@ func classifyPath(path string) pathKind {
 	case strings.HasPrefix(lower, "changelog"),
 		strings.HasPrefix(lower, "changes.md"),
 		strings.HasPrefix(lower, "changes."),
+		strings.HasPrefix(lower, "whiteboard"),
+		strings.HasPrefix(lower, "journey"),
 		strings.HasPrefix(lower, "session-log"),
 		strings.HasPrefix(lower, "lathe-changelog"):
-		return pathChangelog
+		return pathMeta
 	}
 	// Anything in .gitignore that still ended up in the diff was force-added.
 	if err := runSilent("git", "check-ignore", "-q", path); err == nil {
@@ -279,9 +285,9 @@ func getHead(branch string) string {
 // resolveStalePRs is called by the caller (cycle.go) BEFORE this function so that
 // the caller can capture a clean pre-step SHA — otherwise a stale PR merge at the
 // top of runStep would pollute the delta used for contribution classification.
-func runStep(cycle int, phase string, tool string, agentFn func() error) error {
+func runStep(id, phase string, tool string, agentFn func() error) error {
 	waitForRateLimit()
-	setCycle(cycle, phase)
+	_ = setPhase(id, phase)
 	log("%s ...", phase)
 
 	if err := createSessionBranch(); err != nil {
@@ -294,7 +300,6 @@ func runStep(cycle int, phase string, tool string, agentFn func() error) error {
 	// Run the agent — errors are non-fatal (agent might fail, cycle continues)
 	agentFn()
 
-	archiveCycle(cycle)
 	safetyNet()
 
 	// Give GitHub time to register the push and PR

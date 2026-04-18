@@ -79,6 +79,27 @@ func assembleCommon() string {
 	return b.String()
 }
 
+// assembleWhiteboard returns the shared-scratchpad block that every runtime agent
+// sees. The whiteboard is a tool in the room — no prescription on who uses it or
+// when, only a statement that it exists, is shared across this cycle's agents, and
+// starts fresh at each cycle boundary.
+func assembleWhiteboard() string {
+	var b strings.Builder
+	b.WriteString("---\n# Whiteboard (shared, this cycle)\n\n")
+	b.WriteString("A shared scratchpad. Any agent in this cycle's loop can read it, write to it, edit it, or wipe it. Whatever ends up here carries forward to the other agents in this cycle. The engine wipes it clean at the start of each new cycle. Available as a tool — use it, or don't.\n\n")
+	b.WriteString("Location: `.lathe/session/whiteboard.md`\n\n")
+	b.WriteString("Current contents:\n\n")
+	data, err := os.ReadFile(filepath.Join(latheSession, "whiteboard.md"))
+	if err != nil || len(strings.TrimSpace(string(data))) == 0 {
+		b.WriteString("(empty)\n\n")
+	} else {
+		b.WriteString("```\n")
+		b.Write(data)
+		b.WriteString("\n```\n\n")
+	}
+	return b.String()
+}
+
 // assembleSessionContext builds the branch/PR/CI session context.
 func assembleSessionContext() string {
 	s, err := readSession()

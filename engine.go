@@ -70,7 +70,6 @@ func engineStart(args []string) {
 	os.RemoveAll(latheSession)
 	os.MkdirAll(filepath.Join(latheSession, "logs"), 0755)
 	os.MkdirAll(latheHistory, 0755)
-	os.MkdirAll(championHistory, 0755)
 
 	if theme != "" {
 		os.WriteFile(filepath.Join(latheSession, "theme.txt"), []byte(theme), 0644)
@@ -180,7 +179,6 @@ func engineRun(args []string) {
 		log("Done.")
 	}()
 
-	cycle := getCycle()
 	cyclesRun := 0
 
 	for {
@@ -192,7 +190,8 @@ func engineRun(args []string) {
 		default:
 		}
 
-		if err := runCycle(cycle, tool); err != nil {
+		cycleID := newCycleID()
+		if err := runCycle(cycleID, tool); err != nil {
 			if errors.Is(err, errMaxRounds) {
 				// Oscillation cap = the dialog couldn't converge in 20 rounds.
 				// That needs human judgment — stop the engine, leave error.md
@@ -200,10 +199,9 @@ func engineRun(args []string) {
 				log("Entered error state — session stopped. See .lathe/session/error.md")
 				return
 			}
-			log("Cycle %d error: %v", cycle, err)
+			log("Cycle %s error: %v", cycleID, err)
 		}
 
-		cycle++
 		cyclesRun++
 
 		if maxCycles > 0 && cyclesRun >= maxCycles {
@@ -313,7 +311,7 @@ func engineStatus(args []string) {
 	if data, err := os.ReadFile(cycleFile); err == nil {
 		var c CycleState
 		if json.Unmarshal(data, &c) == nil {
-			fmt.Printf("  Cycle: %d  Status: %s\n", c.Cycle, c.Status)
+			fmt.Printf("  Cycle: %s  Phase: %s\n", c.ID, c.Phase)
 		}
 	}
 

@@ -9,7 +9,8 @@ import (
 )
 
 // invokeAgent calls the LLM with a prompt, tees output to a log file, and detects rate limits.
-func invokeAgent(prompt string, cycle int, label string, tool string) error {
+// cycleID is the timestamp-based cycle identity used to name per-step log files.
+func invokeAgent(prompt string, cycleID string, label string, tool string) error {
 	// Pre-cycle hook
 	hook := filepath.Join(latheDir, "hooks", "pre-cycle.sh")
 	if info, err := os.Stat(hook); err == nil && info.Mode()&0111 != 0 {
@@ -21,7 +22,7 @@ func invokeAgent(prompt string, cycle int, label string, tool string) error {
 
 	logDir := filepath.Join(latheSession, "logs")
 	os.MkdirAll(logDir, 0755)
-	logFile := filepath.Join(logDir, fmt.Sprintf("cycle-%03d-%s.log", cycle, label))
+	logFile := filepath.Join(logDir, fmt.Sprintf("cycle-%s-%s.log", cycleID, label))
 
 	log("Invoking %s (%s) ...", tool, label)
 

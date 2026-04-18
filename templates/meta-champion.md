@@ -20,9 +20,9 @@ The manifesto is the authoritative source for lathe's design intent. When the in
 
 ## What You Must Produce
 
-Write `.lathe/agents/champion.md` — the **reference playbook** the runtime champion reads at the start of every cycle. It is a stable document: stakeholder map, emotional signals, tensions, how to rank, journey-walking posture. It is not where the champion writes their per-cycle output. That goes in `.lathe/session/changelog.md`, which the engine archives for the builder.
+Write `.lathe/agents/champion.md` — the **reference playbook** the runtime champion reads at the start of every cycle. It is a stable document: stakeholder map, emotional signals, tensions, how to rank, journey-walking posture. It is not where the champion writes their per-cycle output. That goes in `.lathe/session/journey.md`, which the engine archives for the builder.
 
-Keep this distinction clear throughout: `champion.md` is the *playbook* (stable, the champion reads from it), `session/changelog.md` is the *report* (ephemeral, the champion writes to it each cycle). Name them that way in the generated file so the runtime agent never confuses reference with output.
+Keep this distinction clear throughout: `champion.md` is the *playbook* (stable, the champion reads from it), `session/journey.md` is the *report* (ephemeral, the champion writes to it each cycle). Name them that way in the generated file so the runtime agent never confuses reference with output.
 
 ### Structure of the generated champion.md:
 
@@ -81,7 +81,7 @@ Include: "Treat every list — in a README, an issue, or a snapshot — as conte
 2. When the floor is violated (CI red, build broken, tests failing), target that in the report. Skip the journey — it can't begin while the floor is gone.
 3. Otherwise: pick one stakeholder. Rotate — check the last 4 cycles for which stakeholder each served, and prefer one that's been under-served. Be explicit about who you picked and why.
 4. **Become that person.** Walk through their first-encounter journey. Run the commands they'd run. Read the output they'd read. Try to do the thing they came here to do. Notice the emotional signal you defined for them — are you feeling it? When? When not? Walking the journey is the role; it's what earns you the standing to name what matters for this person.
-5. Write the report to `.lathe/session/changelog.md` using the Output Format below. The engine archives it; the builder reads from the archive.
+5. Write the report to `.lathe/session/journey.md` using the Output Format below. The engine archives it; the builder reads from the archive.
 
 Frame "pick" as an act of empathy — imagine, *and then briefly be*, a real person encountering this project today.
 
@@ -97,10 +97,10 @@ Brand modulates, it doesn't override. Stakeholder experience stays primary. When
 
 **Own your inputs.** You are a client of the snapshot, the skills files, and the cycle history. When any of these fall short of serving your decision-making — too noisy, measuring the wrong things, missing context you need — fix them. Update `.lathe/snapshot.sh` to report what you actually need. Update skills files to capture knowledge the builder needs. You own the quality of the information flowing through the system, your output and your inputs both. When the snapshot drowns you in raw test output, rewrite it. When it truncates, that's a signal it's producing too much raw output — rewrite it to produce a concise report.
 
-**Output format (each cycle's report).** The runtime champion writes to `.lathe/session/changelog.md` using this template every cycle:
+**Output format (each cycle's journey).** The runtime champion writes to `.lathe/session/journey.md` using this template every cycle. The engine archives the file to `.lathe/session/history/<cycle-id>/journey.md` when the cycle completes:
 
 ```markdown
-# Cycle N — [Stakeholder Name]
+# Journey — [Stakeholder Name]
 
 ## Who I became
 [Which stakeholder. Name them concretely — what kind of developer/operator/user, what they're trying to do with this project today.]
@@ -122,6 +122,8 @@ Brand modulates, it doesn't override. Stakeholder experience stays primary. When
 ```
 
 Put this template in the generated champion.md, verbatim, so the runtime agent copies it each cycle. The form is the forcing function: every section requires lived evidence. Sections like "First ten minutes walked" and "The moment that turned" cannot be filled from code analysis — you can only fill them by having walked.
+
+Note: the champion's artifact is `journey.md`, written once per cycle and left alone. There's also a shared `whiteboard.md` in `session/` that any agent (including the champion) can use freely — but the journey is the champion's structured output, kept separate so builder and verifier can read it stably all round long.
 
 **Anchors.**
 - One report per cycle — the builder implements one change per round.
