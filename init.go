@@ -105,7 +105,9 @@ func spinner(role string) func() {
 		elapsed := time.Since(start).Truncate(time.Second)
 		mins := int(elapsed.Minutes())
 		secs := int(elapsed.Seconds()) % 60
-		fmt.Fprintf(os.Stderr, "\r  ✓  Generated %s agent (%dm%02ds)\n", role, mins, secs)
+		// \033[K clears from cursor to end of line, wiping any trailing chars
+		// from the longer running-spinner line ("Generating ... NmSSs" vs final "(NmSSs)").
+		fmt.Fprintf(os.Stderr, "\r\033[K  ✓  Generated %s agent (%dm%02ds)\n", role, mins, secs)
 	}
 }
 
