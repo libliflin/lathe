@@ -13,7 +13,7 @@ import (
 // without converging.
 var errMaxRounds = errors.New("oscillation cap reached without convergence")
 
-// runCycle executes one full cycle: goal-setter → dialog between builder and verifier.
+// runCycle executes one full cycle: champion → dialog between builder and verifier.
 // Each round both contribute (or stand down). The cycle converges when a round passes
 // with neither committing. roundsPerCycle caps the dialog to prevent oscillation.
 func runCycle(cycle int, tool string) error {
@@ -32,14 +32,14 @@ func runCycle(cycle int, tool string) error {
 		_ = writeSession(s)
 	}
 
-	// --- Goal Setter ---
+	// --- Champion ---
 	resolveStalePRs()
-	if err := runStep(cycle, "goal", tool, func() error {
-		return runGoalSetter(cycle, tool)
+	if err := runStep(cycle, "champion", tool, func() error {
+		return runChampion(cycle, tool)
 	}); err != nil {
 		return err
 	}
-	archiveGoal(cycle)
+	archiveChampion(cycle)
 
 	baseBranch := getBaseBranch()
 
@@ -137,9 +137,9 @@ func writeErrorState(cycle, round int, kind, detail string) {
 	fmt.Fprintf(&b, "**Kind:** %s\n\n", kind)
 	fmt.Fprintf(&b, "## What happened\n\n%s\n\n", detail)
 
-	latestGoal := filepath.Join(goalHistory, fmt.Sprintf("cycle-%03d.md", cycle))
-	if data, err := os.ReadFile(latestGoal); err == nil {
-		b.WriteString("## Goal of the stuck cycle\n\n")
+	latestReport := filepath.Join(championHistory, fmt.Sprintf("cycle-%03d.md", cycle))
+	if data, err := os.ReadFile(latestReport); err == nil {
+		b.WriteString("## Champion's report for the stuck cycle\n\n")
 		b.Write(data)
 		b.WriteString("\n\n")
 	}
@@ -160,8 +160,8 @@ func writeErrorState(cycle, round int, kind, detail string) {
 	b.WriteString("## What to do from here\n\n")
 	b.WriteString("Open Claude Code in this project directory and ask it to investigate. Tell it to read this file and the stale-prs.txt context.\n\n")
 	b.WriteString("Typical resolutions:\n")
-	b.WriteString("- **PRs going in circles**: close them (`gh pr close <N> --delete-branch`). The next cycle's goal-setter will pick a new angle.\n")
-	b.WriteString("- **Goal was malformed**: close the related PRs; lathe's next cycle will pick a fresh goal.\n")
+	b.WriteString("- **PRs going in circles**: close them (`gh pr close <N> --delete-branch`). The next cycle's champion will pick a new angle.\n")
+	b.WriteString("- **Report was malformed**: close the related PRs; lathe's next cycle will pick a fresh direction.\n")
 	b.WriteString("- **Real blocker** (a dep conflict, a flaky test, a credential issue): fix it in the repo, then restart.\n\n")
 	b.WriteString("When you've resolved things: `lathe start` to resume. `preStartCleanup` will merge any greens that appeared, leave the rest for the new session's agents to see.\n")
 

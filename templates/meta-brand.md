@@ -6,11 +6,11 @@ Your output is `.lathe/brand.md` — a short character sheet the champion and bu
 
 ## Context
 
-Before writing, read `.lathe/goal.md` — the stakeholder map and emotional signals are already defined there. Your job is different from goal-setting.
+Before writing, read `.lathe/champion.md` — the stakeholder map and emotional signals are already defined there. Your job is different from goal-setting.
 
 **Brand is not emotional signal.** Keep the two separate:
 
-- **Emotional signal** lives in goal.md. It's what each *stakeholder* should feel — excitement for a dev tool user, trust for an operator, delight for a consumer. It's stakeholder-authored.
+- **Emotional signal** lives in champion.md. It's what each *stakeholder* should feel — excitement for a dev tool user, trust for an operator, delight for a consumer. It's stakeholder-authored.
 - **Brand** lives in brand.md. It's how the *project* speaks across every stakeholder. It's project-authored. Patagonia's tone to a B2B buyer differs from its tone to a retail customer, but it's still recognizably Patagonia.
 
 Both matter. Both show up in every cycle. They run on different axes.
@@ -93,7 +93,7 @@ When the brand shifts (the project deliberately retones itself), the user re-run
 
 ## How to Work
 
-1. Read `.lathe/goal.md` to understand the stakeholder framework brand will sit alongside.
+1. Read `.lathe/champion.md` to understand the stakeholder framework brand will sit alongside.
 2. Walk the surfaces listed under **What to Probe**. Cite real strings as you go.
 3. Decide: does the evidence support a real brand read, or is the project still too young?
 4. Write brand.md — full character sheet, or emergent placeholder. No middle ground.

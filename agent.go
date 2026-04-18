@@ -8,13 +8,13 @@ import (
 	"strings"
 )
 
-func runGoalSetter(cycle int, tool string) error {
-	log("Running goal-setter (cycle %d) ...", cycle)
+func runChampion(cycle int, tool string) error {
+	log("Running champion (cycle %d) ...", cycle)
 
 	var b strings.Builder
 
-	// Goal-setter behavioral doc
-	b.WriteString(readFileOr(filepath.Join(latheDir, "goal.md"), ""))
+	// Champion's playbook (stable reference doc — read, not written)
+	b.WriteString(readFileOr(filepath.Join(latheDir, "champion.md"), ""))
 	b.WriteString("\n\n")
 
 	// Common: skills, refs, theme, snapshot
@@ -23,14 +23,14 @@ func runGoalSetter(cycle int, tool string) error {
 	// Session context
 	b.WriteString(assembleSessionContext())
 
-	// Last 4 goals for context
-	if entries, err := filepath.Glob(filepath.Join(goalHistory, "*.md")); err == nil && len(entries) > 0 {
+	// Last 4 cycles' reports for context
+	if entries, err := filepath.Glob(filepath.Join(championHistory, "*.md")); err == nil && len(entries) > 0 {
 		sort.Strings(entries)
 		start := 0
 		if len(entries) > 4 {
 			start = len(entries) - 4
 		}
-		b.WriteString("---\n# Previous Goals (last 4 cycles)\n\n")
+		b.WriteString("---\n# Previous Cycles (last 4)\n\n")
 		for _, f := range entries[start:] {
 			name := strings.TrimSuffix(filepath.Base(f), ".md")
 			b.WriteString("## " + name + "\n")
@@ -58,20 +58,15 @@ func runGoalSetter(cycle int, tool string) error {
 
 	// Instructions
 	b.WriteString("---\n# Your Task\n\n")
-	b.WriteString("You are the customer champion. Each cycle:\n\n")
-	b.WriteString("1. If the floor is violated (CI red, build broken, tests failing), the goal is to fix that — skip straight to step 4.\n")
-	b.WriteString("2. If the Stale Lathe PRs section is present above, weigh it in: is the stuck work the right next goal, or is it superseded? You can set the goal to finish a stale PR, or instruct the builder to close it as part of this cycle's fresh direction.\n")
-	b.WriteString("3. Otherwise, pick one stakeholder (rotate based on Previous Goals — prefer one under-served recently) and say who.\n")
-	b.WriteString("4. **Use the project as them.** Walk their first-encounter journey — run the commands, read the output, hit the friction. Notice the emotional signal goal.md defined for them. This is not optional; it is how a champion earns the courage to name what's valuable.\n")
-	b.WriteString("5. Pick the single change that would most improve their next encounter. Write a goal file describing:\n")
-	b.WriteString("   - **What** to change (specific, actionable — not how)\n")
-	b.WriteString("   - **Which stakeholder** it helps and why\n")
-	b.WriteString("   - **Why now** — the specific moment in the journey (or snapshot signal) that makes this the most valuable change right now\n")
-	b.WriteString("   - **Lived experience note** — which stakeholder you became, what you tried, what the worst/hollowest moment was\n\n")
-	b.WriteString("Commit this goal as a file the builder can read. The builder implements; you decide.\n\n")
-	b.WriteString("**Changelog:** Write a brief changelog to `.lathe/session/changelog.md` describing which stakeholder you became, what you experienced, the goal you set, and why.\n\n")
+	b.WriteString("You are the champion. Each cycle:\n\n")
+	b.WriteString("1. When the floor is violated (CI red, build broken, tests failing), target that in the report — skip straight to step 4.\n")
+	b.WriteString("2. When the Stale Lathe PRs section is present above, weigh it in: is the stuck work the right next target, or is it superseded? The report can target finishing a stale PR, or instruct the builder to close it as part of this cycle's fresh direction.\n")
+	b.WriteString("3. Otherwise, pick one stakeholder (rotate based on Previous Cycles — prefer one under-served recently) and name them.\n")
+	b.WriteString("4. **Become that person.** Walk their first-encounter journey — run the commands, read the output, hit the friction. Notice the emotional signal your playbook defined for them. Walking is the role; it's what earns you the standing to name what matters.\n")
+	b.WriteString("5. Write your report to `.lathe/session/changelog.md` using the Output Format from your playbook (champion.md). Your reference doc `.lathe/champion.md` is not the output target — it is stable and you read from it, not write to it.\n\n")
+	b.WriteString("The engine archives your report to `.lathe/session/champion-history/` for the builder.\n\n")
 
-	return invokeAgent(b.String(), cycle, "goal", tool)
+	return invokeAgent(b.String(), cycle, "champion", tool)
 }
 
 func runBuilder(cycle, round int, tool string) error {
@@ -89,16 +84,16 @@ func runBuilder(cycle, round int, tool string) error {
 	// Session context
 	b.WriteString(assembleSessionContext())
 
-	// Current goal
-	b.WriteString("---\n# Current Goal\n\n")
-	goalFile := filepath.Join(goalHistory, fmt.Sprintf("cycle-%03d.md", cycle))
+	// Current champion report
+	b.WriteString("---\n# Champion's Report (this cycle)\n\n")
+	reportFile := filepath.Join(championHistory, fmt.Sprintf("cycle-%03d.md", cycle))
 	changelogFile := filepath.Join(latheSession, "changelog.md")
-	if data, err := os.ReadFile(goalFile); err == nil {
+	if data, err := os.ReadFile(reportFile); err == nil {
 		b.Write(data)
 	} else if data, err := os.ReadFile(changelogFile); err == nil {
 		b.Write(data)
 	} else {
-		b.WriteString("(no goal found for this cycle — use your best judgment based on the snapshot)")
+		b.WriteString("(no champion report found for this cycle — use your best judgment based on the snapshot)")
 	}
 	b.WriteString("\n\n")
 
@@ -161,10 +156,10 @@ func runVerifier(cycle, round int, tool string) error {
 	// Session context
 	b.WriteString(assembleSessionContext())
 
-	// Current goal
-	b.WriteString("---\n# Current Goal\n\n")
-	goalFile := filepath.Join(goalHistory, fmt.Sprintf("cycle-%03d.md", cycle))
-	b.WriteString(readFileOr(goalFile, "(no goal found)"))
+	// Champion's report for this cycle
+	b.WriteString("---\n# Champion's Report (this cycle)\n\n")
+	reportFile := filepath.Join(championHistory, fmt.Sprintf("cycle-%03d.md", cycle))
+	b.WriteString(readFileOr(reportFile, "(no champion report found)"))
 	b.WriteString("\n\n")
 
 	// Builder's diff
@@ -211,7 +206,7 @@ func runVerifier(cycle, round int, tool string) error {
 	b.WriteString("## What I added\n")
 	b.WriteString("(code you committed this round, or \"Nothing this round — the work holds up against the goal from my lens\")\n")
 	b.WriteString("\n")
-	b.WriteString("## Notes for the goal-setter\n")
+	b.WriteString("## Notes for the champion\n")
 	b.WriteString("(structural follow-ups spotted during scrutiny, or \"None\")\n")
 	b.WriteString("```\n\n")
 	b.WriteString("The cycle converges when a round passes with neither of you committing — the engine detects this automatically. No VERDICT line needed; your contribution (or stand-down) speaks for itself.\n\n")

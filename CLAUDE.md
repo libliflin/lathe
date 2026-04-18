@@ -2,7 +2,7 @@
 
 ## What This Is
 
-Lathe is an autonomous code improvement loop. It points three AI agents at a repo and runs repeating cycles: a goal-setter picks the highest-value change, a builder implements it, and a verifier checks the work.
+Lathe is an autonomous code improvement loop. It points three AI agents at a repo and runs repeating cycles: a champion picks the highest-value change from lived stakeholder experience, a builder implements it, and a verifier scrutinizes and tightens gaps.
 
 The core value proposition: lathe init identifies the stakeholders of a project and encodes their needs into agents that autonomously work on their behalf. Git commits provide oversight.
 
@@ -19,27 +19,27 @@ Single Go binary with all templates embedded via `go:embed`. Builds for all plat
 
 **`lathe init`** — The alignment step. Runs five sequential AI calls:
 1. `meta-snapshot.md` → `.lathe/snapshot.sh` — project-specific state collection script. The agent reads the project and writes a snapshot tailored to its build/test/lint tools.
-2. `meta-goal.md` → `.lathe/goal.md` — stakeholder map, tensions, ranking guidance. Values manifesto spliced in.
+2. `meta-champion.md` → `.lathe/champion.md` — the champion's playbook: stakeholder map, tensions, emotional signals, how to rank, the per-cycle output format. Values manifesto spliced in.
 3. `meta-brand.md` → `.lathe/brand.md` — the project's character, cited from real signals (errors, README, CLI output). Loaded into every runtime prompt as a tint on decisions.
-4. `meta-builder.md` → `.lathe/builder.md` — implementation quality, CI/PR workflow. Reads goal.md for alignment.
-5. `meta-verifier.md` → `.lathe/verifier.md` — adversarial verification themes. Reads builder.md for failure modes.
+4. `meta-builder.md` → `.lathe/builder.md` — implementation quality (creative/synthesis posture), CI/PR workflow. Reads champion.md for alignment.
+5. `meta-verifier.md` → `.lathe/verifier.md` — comparative/scrutinizing posture, the shape-specific verification playbook. Reads builder.md for failure modes.
 
-Use `--agent=snapshot`, `--agent=goal`, `--agent=brand`, `--agent=builder`, or `--agent=verifier` to re-init just one role without touching the others.
+Use `--agent=snapshot`, `--agent=champion`, `--agent=brand`, `--agent=builder`, or `--agent=verifier` to re-init just one role without touching the others. `--agent=goal` is accepted as an alias for `--agent=champion` during the transition.
 
-**`lathe start`** — The execution loop. One cycle = goal-setter + a dialog between builder and verifier. The builder leans creative/generative; the verifier leans comparative/scrutinizing. Each round both speak: whoever sees something worth adding commits; whoever sees the work as complete from their lens makes no commit. The cycle converges when a round passes with neither committing — no VERDICT, no gate. `roundsPerCycle` (default 4) caps the dialog to prevent oscillation; hitting the cap hands the dialog to the next goal-setter cycle. Each step follows identical plumbing: branch → snapshot → agent → safety net → PR → CI → merge → back to main. The engine tracks convergence by comparing `HEAD` of the base branch before and after each agent step.
+**`lathe start`** — The execution loop. One cycle = champion + a dialog between builder and verifier. The builder leans creative/generative; the verifier leans comparative/scrutinizing. Each round both speak: whoever sees something worth adding commits; whoever sees the work as complete from their lens makes no commit. The cycle converges when a round passes with neither committing — no VERDICT, no gate. `roundsPerCycle` (default 20) caps the dialog; hitting the cap writes an error state to `.lathe/session/error.md` and halts the engine for human review. Each step follows identical plumbing: branch → snapshot → agent → safety net → PR → CI → merge → back to main. The engine tracks convergence by comparing `HEAD` of the base branch before and after each agent step, and classifies changelog-only or gitignored-file commits as non-substantive (with a 5-minute breathing-room pause).
 
 **Templates** — Embedded in the binary via `go:embed`, read-only:
 - `templates/meta-snapshot.md` — instructions for snapshot script generation
-- `templates/meta-goal.md` — instructions for goal-setter init
+- `templates/meta-champion.md` — instructions for champion init
 - `templates/meta-brand.md` — instructions for brand init (character, voice, edge-case behavior)
 - `templates/meta-builder.md` — instructions for builder init
 - `templates/meta-verifier.md` — instructions for verifier init
-- `templates/values-manifesto.md` — design intent, spliced into meta-goal.md via {{VALUES_MANIFESTO}}
+- `templates/values-manifesto.md` — design intent, spliced into meta-champion.md via {{VALUES_MANIFESTO}}
 - `templates/interactive-preamble.md` — additional instructions for `--interactive` mode
 
 ## Key Principle
 
-**The meta-prompts are the whole game.** They determine what init discovers, which determines what the runtime agents know, which determines whether cycles create value. The goal-setter's meta-prompt is the most important — it carries the values manifesto and stakeholder framework.
+**The meta-prompts are the whole game.** They determine what init discovers, which determines what the runtime agents know, which determines whether cycles create value. The champion's meta-prompt is the most important — it carries the values manifesto and stakeholder framework.
 
 ## File Map
 
@@ -68,7 +68,7 @@ dashboard/                       — Self-contained web dashboard (isolated pack
   setsid_*.go                    — Platform-specific detach
 templates/
   meta-snapshot.md               — Instructions for snapshot script generation
-  meta-goal.md                   — Instructions for goal-setter init
+  meta-champion.md               — Instructions for champion init
   meta-brand.md                  — Instructions for brand init (project character)
   meta-builder.md                — Instructions for builder init
   meta-verifier.md               — Instructions for verifier init
@@ -83,7 +83,7 @@ templates/
 **Config** — written by `lathe init`, survives stop, committed by the user:
 
 ```
-.lathe/goal.md               — Goal-setter behavioral instructions, stakeholder map
+.lathe/champion.md           — Champion's playbook (stakeholder map, tensions, output format)
 .lathe/brand.md              — Project character (voice, edge-case behavior). Loaded into every runtime prompt.
 .lathe/builder.md            — Builder behavioral instructions
 .lathe/verifier.md           — Verifier behavioral instructions
@@ -106,7 +106,7 @@ templates/
   lathe.pid                  — Engine process ID
   logs/                      — Per-step agent logs (cycle-001-goal.log, cycle-001-build-1.log, etc.)
   history/                   — Archived cycle changelogs and snapshots
-  goal-history/              — Archived goals (goal-setter sees last 4)
+  champion-history/          — Archived champion reports (champion sees last 4)
 ```
 
 History lives inside `session/` (gitignored). The real audit trail is the squash merge commits on main.
@@ -129,4 +129,5 @@ History lives inside `session/` (gitignored). The real audit trail is the squash
 - Each step follows identical plumbing: stale-PR sweep → branch → snapshot → CI status → agent → archive → safety net → PR → CI wait → merge. Teardown works at any point.
 - The stale-PR sweep (`resolveStalePRs`) merges any lathe PR whose CI has turned green and writes `session/stale-prs.txt` (with failure logs + handling instructions) for the ones still failing or pending. `lathe start` runs a one-shot version of this sweep (`preStartCleanup`) to inherit work from prior sessions.
 - Step branching: if the session's PR is still open at step start (previous step's CI didn't merge in time), the next step continues on the same branch. A single goal's rounds of dialog share one PR when CI is slow — on merge, the full arc squashes into one commit. At cycle boundaries, `runCycle` clears the session PR so each new goal always cuts fresh.
-- No VERDICT binary. The builder and verifier each have distinct lenses (creative synthesis / comparative scrutiny). Each round they contribute code or stand down plainly in the changelog. The engine reads convergence from `git rev-parse <base_branch>` before and after each step — no commit means no contribution. A round with neither contributing is convergence.
+- No VERDICT binary. The champion runs first (one report per cycle), then the builder and verifier have a dialog with distinct lenses (creative synthesis / comparative scrutiny). Each round they contribute code or stand down plainly in the changelog. The engine reads convergence from `git rev-parse <base_branch>` before and after each step — no commit means no contribution. A round with neither contributing is convergence.
+- The champion writes to `.lathe/session/changelog.md` (ephemeral, archived as `champion-history/cycle-NNN.md`). Its reference playbook lives at `.lathe/champion.md` and is read-only at runtime. Keeping these paths distinctly named prevents the agent from overwriting its own playbook.

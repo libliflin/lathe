@@ -70,7 +70,7 @@ func engineStart(args []string) {
 	os.RemoveAll(latheSession)
 	os.MkdirAll(filepath.Join(latheSession, "logs"), 0755)
 	os.MkdirAll(latheHistory, 0755)
-	os.MkdirAll(goalHistory, 0755)
+	os.MkdirAll(championHistory, 0755)
 
 	if theme != "" {
 		os.WriteFile(filepath.Join(latheSession, "theme.txt"), []byte(theme), 0644)

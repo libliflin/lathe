@@ -92,8 +92,8 @@ func archiveCycle(cycle int) error {
 	return nil
 }
 
-func archiveGoal(cycle int) error {
-	if err := os.MkdirAll(goalHistory, 0755); err != nil {
+func archiveChampion(cycle int) error {
+	if err := os.MkdirAll(championHistory, 0755); err != nil {
 		return err
 	}
 	src := filepath.Join(latheSession, "changelog.md")
@@ -104,7 +104,7 @@ func archiveGoal(cycle int) error {
 	if err != nil {
 		return err
 	}
-	dst := filepath.Join(goalHistory, fmt.Sprintf("cycle-%03d.md", cycle))
+	dst := filepath.Join(championHistory, fmt.Sprintf("cycle-%03d.md", cycle))
 	return os.WriteFile(dst, data, 0644)
 }
 
@@ -126,7 +126,7 @@ func initSessionState(mode, theme string) error {
 	if err := os.MkdirAll(latheHistory, 0755); err != nil {
 		return err
 	}
-	if err := os.MkdirAll(goalHistory, 0755); err != nil {
+	if err := os.MkdirAll(championHistory, 0755); err != nil {
 		return err
 	}
 

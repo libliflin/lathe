@@ -151,10 +151,14 @@ func cmdInit(args []string) {
 
 	// Validate --agent
 	if targetAgent != "" {
+		// Accept "goal" as a transitional alias so existing muscle memory still works.
+		if targetAgent == "goal" {
+			targetAgent = "champion"
+		}
 		switch targetAgent {
-		case "snapshot", "goal", "brand", "builder", "verifier":
+		case "snapshot", "champion", "brand", "builder", "verifier":
 		default:
-			die("Unknown agent role: %s (expected: snapshot, goal, brand, builder, verifier)", targetAgent)
+			die("Unknown agent role: %s (expected: snapshot, champion, brand, builder, verifier)", targetAgent)
 		}
 	}
 
@@ -178,7 +182,7 @@ func cmdInit(args []string) {
 		}
 		fmt.Println()
 		fmt.Println("  Note: downstream agents may need re-init too.")
-		fmt.Println("  (snapshot → goal → brand → builder → verifier)")
+		fmt.Println("  (snapshot → champion → brand → builder → verifier)")
 		return
 	}
 
@@ -205,8 +209,8 @@ func cmdInit(args []string) {
 	os.MkdirAll(filepath.Join(latheDir, "refs"), 0755)
 
 	// Generate snapshot + four agent roles in sequence.
-	// Ordering matters: brand reads goal.md's stakeholder map; builder and verifier read brand.md.
-	roles := []string{"snapshot", "goal", "brand", "builder", "verifier"}
+	// Ordering matters: brand reads champion.md's stakeholder map; builder and verifier read brand.md.
+	roles := []string{"snapshot", "champion", "brand", "builder", "verifier"}
 	for _, role := range roles {
 		if err := generateAgentRole(role, tool, interactive); err != nil {
 			fmt.Println()
@@ -238,7 +242,7 @@ func cmdInit(args []string) {
 	os.Chmod(filepath.Join(latheDir, "snapshot.sh"), 0755)
 
 	// Validate
-	for _, required := range []string{"snapshot.sh", "goal.md"} {
+	for _, required := range []string{"snapshot.sh", "champion.md"} {
 		if _, err := os.Stat(filepath.Join(latheDir, required)); os.IsNotExist(err) {
 			fmt.Println()
 			fmt.Printf("  ERROR: Agent generation produced unusable output.\n")
@@ -259,16 +263,16 @@ func cmdInit(args []string) {
 	installSkill()
 
 	if reinit {
-		fmt.Println("  Updated: goal.md, brand.md, builder.md, verifier.md, snapshot.sh, skills")
+		fmt.Println("  Updated: champion.md, brand.md, builder.md, verifier.md, snapshot.sh, skills")
 	} else {
 		fmt.Printf("  Created: %s/\n", latheDir)
 	}
-	fmt.Printf("  Goal:    %s/goal.md\n", latheDir)
-	fmt.Printf("  Brand:   %s/brand.md\n", latheDir)
-	fmt.Printf("  Builder: %s/builder.md\n", latheDir)
-	fmt.Printf("  Verify:  %s/verifier.md\n", latheDir)
-	fmt.Printf("  Skills:  %s/skills/\n", latheDir)
-	fmt.Printf("  Snap:    %s/snapshot.sh\n", latheDir)
+	fmt.Printf("  Champion: %s/champion.md\n", latheDir)
+	fmt.Printf("  Brand:    %s/brand.md\n", latheDir)
+	fmt.Printf("  Builder:  %s/builder.md\n", latheDir)
+	fmt.Printf("  Verify:   %s/verifier.md\n", latheDir)
+	fmt.Printf("  Skills:   %s/skills/\n", latheDir)
+	fmt.Printf("  Snap:     %s/snapshot.sh\n", latheDir)
 
 	if _, err := os.Stat(filepath.Join(latheDir, "alignment-summary.md")); err == nil {
 		fmt.Println()

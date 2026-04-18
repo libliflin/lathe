@@ -79,7 +79,7 @@
     font-size: 10px; letter-spacing: 0.15em; text-transform: uppercase;
     padding: 2px 8px; border-radius: 2px; background: var(--dim); color: var(--text);
   }
-  .phase.phase-goal { background: rgba(111,168,255,0.15); color: var(--blue); border: 1px solid rgba(111,168,255,0.3); }
+  .phase.phase-champion { background: rgba(111,168,255,0.15); color: var(--blue); border: 1px solid rgba(111,168,255,0.3); }
   .phase.phase-build { background: rgba(168,122,255,0.15); color: var(--violet); border: 1px solid rgba(168,122,255,0.3); }
   .phase.phase-verify { background: rgba(91,255,176,0.15); color: var(--green); border: 1px solid rgba(91,255,176,0.3); }
   .phase.phase-idle { background: rgba(107,109,128,0.2); color: var(--muted); border: 1px solid rgba(107,109,128,0.3); }
@@ -234,7 +234,7 @@ function fmtElapsed(sec) {
 
 function phaseClass(phase) {
   if (!phase) return 'phase-idle';
-  if (phase.includes('goal')) return 'phase-goal';
+  if (phase.includes('champion') || phase.includes('goal')) return 'phase-champion';
   if (phase.includes('build')) return 'phase-build';
   if (phase.includes('verify')) return 'phase-verify';
   return 'phase-idle';

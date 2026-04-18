@@ -15,13 +15,13 @@ func setupTestState(t *testing.T) string {
 	latheDir = filepath.Join(dir, ".lathe")
 	latheSession = filepath.Join(latheDir, "session")
 	latheHistory = filepath.Join(latheSession, "history")
-	goalHistory = filepath.Join(latheSession, "goal-history")
+	championHistory = filepath.Join(latheSession, "champion-history")
 	sessionFile = filepath.Join(latheSession, "session.json")
 	latheSkills = filepath.Join(latheDir, "skills")
 
 	os.MkdirAll(latheSession, 0755)
 	os.MkdirAll(latheHistory, 0755)
-	os.MkdirAll(goalHistory, 0755)
+	os.MkdirAll(championHistory, 0755)
 
 	return dir
 }
@@ -115,29 +115,29 @@ func TestArchiveCycle(t *testing.T) {
 	}
 }
 
-func TestArchiveGoal(t *testing.T) {
+func TestArchiveChampion(t *testing.T) {
 	setupTestState(t)
 
-	os.WriteFile(filepath.Join(latheSession, "changelog.md"), []byte("goal: fix tests"), 0644)
+	os.WriteFile(filepath.Join(latheSession, "changelog.md"), []byte("champion: fix tests"), 0644)
 
-	if err := archiveGoal(2); err != nil {
-		t.Fatalf("archiveGoal: %v", err)
+	if err := archiveChampion(2); err != nil {
+		t.Fatalf("archiveChampion: %v", err)
 	}
 
-	data, err := os.ReadFile(filepath.Join(goalHistory, "cycle-002.md"))
+	data, err := os.ReadFile(filepath.Join(championHistory, "cycle-002.md"))
 	if err != nil {
-		t.Fatalf("read archived goal: %v", err)
+		t.Fatalf("read archived champion report: %v", err)
 	}
-	if string(data) != "goal: fix tests" {
-		t.Errorf("goal = %q, want %q", string(data), "goal: fix tests")
+	if string(data) != "champion: fix tests" {
+		t.Errorf("report = %q, want %q", string(data), "champion: fix tests")
 	}
 }
 
-func TestArchiveGoalNoChangelog(t *testing.T) {
+func TestArchiveChampionNoChangelog(t *testing.T) {
 	setupTestState(t)
 
 	// Should not error when no changelog exists
-	if err := archiveGoal(1); err != nil {
-		t.Fatalf("archiveGoal with no changelog: %v", err)
+	if err := archiveChampion(1); err != nil {
+		t.Fatalf("archiveChampion with no changelog: %v", err)
 	}
 }

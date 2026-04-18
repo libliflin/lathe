@@ -30,7 +30,7 @@ An autonomous agent will read this file each round along with the builder's diff
 
 **Verification Themes.** The verifier asks these questions each round:
 
-1. **Did the builder do what was asked?** Compare the diff against the goal. Does the change accomplish what the goal-setter intended? Does the stakeholder benefit the goal named line up with what the code does?
+1. **Did the builder do what was asked?** Compare the diff against the goal. Does the change accomplish what the champion intended? Does the stakeholder benefit the goal named line up with what the code does?
 
 2. **Does it work in practice?** The builder says it validated — confirm it. Run the tests yourself. Exercise the change. Try the cases the builder's pass may have missed.
 
@@ -40,7 +40,7 @@ An autonomous agent will read this file each round along with the builder's diff
    - Inputs that stress-test this change
    - Places elsewhere in the code where this change could ripple
 
-4. **Is this a patch or a structural fix?** If the builder added a runtime check, ask: could a type, a newtype wrapper, or an API change make this check unnecessary? When the same class of bug can reappear with a future change, the fix is one level deeper than this round. Flag it in findings as a lead for the goal-setter — not a blocker on this round.
+4. **Is this a patch or a structural fix?** If the builder added a runtime check, ask: could a type, a newtype wrapper, or an API change make this check unnecessary? When the same class of bug can reappear with a future change, the fix is one level deeper than this round. Flag it in findings as a lead for the champion — not a blocker on this round.
 
 5. **Are the tests as strong as the change?** When the builder adds functionality, add the tests for it. When the builder's tests cover only the happy path, add the adversarial cases. Tests belong in the project's test suite, alongside the code.
 
@@ -71,10 +71,10 @@ The verifier commits real code that strengthens this round's change:
 - Error handling improvements on the paths the change touches
 - Test fixtures with realistic, adversarial inputs
 
-**Scope.** Keep the work inside this round: add to the builder's change, touch what the builder touched, implement what the goal asked for. Larger structural follow-ups go in findings as leads for the goal-setter next cycle.
+**Scope.** Keep the work inside this round: add to the builder's change, touch what the builder touched, implement what the goal asked for. Larger structural follow-ups go in findings as leads for the champion next cycle.
 
 **Rules.**
-- Focus on this round's change. Gaps from previous rounds belong to the goal-setter to prioritize next cycle.
+- Focus on this round's change. Gaps from previous rounds belong to the champion to prioritize next cycle.
 - Each round, you contribute when you see something worth adding. When the work stands complete from your comparative lens, you make no commit and say so plainly in the changelog — "Nothing to add this round — the work holds up against the goal from my lens." The cycle converges when a round passes with neither of you committing.
 - When you find a serious problem (the change breaks something, misses the goal, introduces a regression), fix it in place — your role includes adding the code that closes the gap.
 - When the builder's change aims at the wrong target, describe the gap specifically in the changelog so the builder sees exactly what's missing next round. Your comparative lens is what makes that gap visible.
@@ -95,7 +95,7 @@ The verifier commits real code that strengthens this round's change:
 - Files: paths modified
 - (When nothing: "Nothing this round — the work holds up against the goal from my lens.")
 
-## Notes for the goal-setter
+## Notes for the champion
 - Structural follow-ups that go beyond this round's scope, spotted during scrutiny
 - "None" when nothing worth noting
 ```

@@ -12,13 +12,13 @@ import (
 
 // Global paths — set once in main, used everywhere.
 var (
-	latheDir     = ".lathe"
-	latheSession string
-	latheHistory string
-	goalHistory  string
-	latheSkills  string
-	pidFile      string
-	sessionFile  string
+	latheDir         = ".lathe"
+	latheSession     string
+	latheHistory     string
+	championHistory  string
+	latheSkills      string
+	pidFile          string
+	sessionFile      string
 
 	ciWaitTimeout    = 300   // seconds
 	roundsPerCycle   = 20    // oscillation cap — a dialog that hasn't converged by 20 rounds needs human review
@@ -28,7 +28,7 @@ var (
 func initPaths() {
 	latheSession = filepath.Join(latheDir, "session")
 	latheHistory = filepath.Join(latheSession, "history")
-	goalHistory = filepath.Join(latheSession, "goal-history")
+	championHistory = filepath.Join(latheSession, "champion-history")
 	latheSkills = filepath.Join(latheDir, "skills")
 	pidFile = filepath.Join(latheSession, "lathe.pid")
 	sessionFile = filepath.Join(latheSession, "session.json")
@@ -94,8 +94,14 @@ func ensureInitialized() {
 	if _, err := os.Stat(latheDir); os.IsNotExist(err) {
 		die("Not a lathe project. Run 'lathe init' first.")
 	}
-	if _, err := os.Stat(filepath.Join(latheDir, "goal.md")); os.IsNotExist(err) {
-		die("Missing %s/goal.md. Run 'lathe init' first.", latheDir)
+	// Legacy projects may have .lathe/goal.md instead of .lathe/champion.md.
+	// Accept either during the transition; preStartCleanup handles the rename.
+	championPath := filepath.Join(latheDir, "champion.md")
+	legacyGoalPath := filepath.Join(latheDir, "goal.md")
+	if _, err := os.Stat(championPath); os.IsNotExist(err) {
+		if _, legacyErr := os.Stat(legacyGoalPath); os.IsNotExist(legacyErr) {
+			die("Missing %s/champion.md. Run 'lathe init' first.", latheDir)
+		}
 	}
 	if _, err := os.Stat(filepath.Join(latheDir, "snapshot.sh")); os.IsNotExist(err) {
 		die("Missing %s/snapshot.sh. Run 'lathe init' first.", latheDir)

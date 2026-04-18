@@ -163,6 +163,7 @@ func waitForCIDirect() {
 // tracking them. Agents running `git add -A` would then ship session/changelog.md
 // churn as real commits on every round. We detect + untrack here.
 func preStartCleanup() {
+	migrateLegacyGoalMd()
 	selfHealSessionTracking()
 
 	out, err := runCapture("gh", "pr", "list",
@@ -218,6 +219,25 @@ func preStartCleanup() {
 		fmt.Printf("  Summary: %d merged, %d failing, %d pending.\n", merged, fails, pendings)
 	}
 	fmt.Println()
+}
+
+// migrateLegacyGoalMd renames .lathe/goal.md to .lathe/champion.md when found.
+// Projects initialized before the champion rename have goal.md; the runtime now
+// reads champion.md. Silent no-op when the rename isn't needed.
+func migrateLegacyGoalMd() {
+	legacy := filepath.Join(latheDir, "goal.md")
+	target := filepath.Join(latheDir, "champion.md")
+	if _, err := os.Stat(legacy); err != nil {
+		return
+	}
+	if _, err := os.Stat(target); err == nil {
+		return // both exist — something unusual; leave it for the user
+	}
+	if err := os.Rename(legacy, target); err == nil {
+		fmt.Println()
+		fmt.Printf("  Migrated %s/goal.md → %s/champion.md (role renamed in engine).\n", latheDir, latheDir)
+		fmt.Println("  Commit the rename to land it in main.")
+	}
 }
 
 // selfHealSessionTracking detects session files tracked by git (typically from
