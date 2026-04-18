@@ -43,3 +43,18 @@ jobs:
             --title "lathe @ ${{ steps.sha.outputs.short }}" \
             --notes "Built from $(git rev-parse HEAD) on main." \
             --latest
+
+      - name: Prune old releases (keep newest 5)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Keep the 5 most recent releases; delete everything else (both the
+          # release and the underlying git tag). Runs after create so the new
+          # release is always safely in the keep bucket.
+          gh release list --limit 100 --json tagName,createdAt \
+            --jq 'sort_by(.createdAt) | reverse | .[5:] | .[].tagName' \
+            | while read -r tag; do
+                [ -z "$tag" ] && continue
+                echo "Pruning: $tag"
+                gh release delete "$tag" --yes --cleanup-tag
+              done
