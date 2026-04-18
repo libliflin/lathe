@@ -43,13 +43,17 @@ type LogLine struct {
 	Message string `json:"message"`
 }
 
-// CycleStats summarizes verdict history for a given lathe.
+// CycleStats summarizes the round-to-converge history for a given lathe.
+// In the dialog model, the earliest possible convergence is round 2 (round 1
+// always has the builder contributing their first implementation), so "clean"
+// means converged in ≤2 rounds. Legacy field names (pass_one / pass_late) are
+// kept on the wire for backwards compat with older dashboard bundles.
 type CycleStats struct {
-	Total    int `json:"total"`     // cycles touched (includes in-progress)
-	PassOne  int `json:"pass_one"`  // PASS on first round
-	PassLate int `json:"pass_late"` // PASS on later rounds
-	Failed   int `json:"failed"`    // max rounds exhausted
-	Verdicts []string `json:"verdicts"` // chronological, for sparkline ("P1", "P2", "P3", "F")
+	Total    int      `json:"total"`     // cycles touched (includes in-progress)
+	PassOne  int      `json:"pass_one"`  // cycles that converged cleanly (round ≤ 2)
+	PassLate int      `json:"pass_late"` // cycles that needed a deeper dialog (round ≥ 3)
+	Failed   int      `json:"failed"`    // cycles that hit the oscillation cap
+	Verdicts []string `json:"verdicts"`  // chronological, for sparkline ("P2", "P3", "P4", "F")
 }
 
 type Snapshot struct {
@@ -309,13 +313,15 @@ func computeCycleStats(cwd string) CycleStats {
 	inCycle := false
 
 	converge := func(round int) {
-		if round <= 1 {
+		// "Clean" = converged in the fewest possible rounds for the dialog model.
+		// Round 1 always has the builder contributing (first impl), so the
+		// earliest a round can end with both sides standing down is round 2.
+		if round <= 2 {
 			stats.PassOne++
-			stats.Verdicts = append(stats.Verdicts, "P1")
 		} else {
 			stats.PassLate++
-			stats.Verdicts = append(stats.Verdicts, "P"+strconv.Itoa(round))
 		}
+		stats.Verdicts = append(stats.Verdicts, "P"+strconv.Itoa(round))
 	}
 
 	for _, line := range strings.Split(string(data), "\n") {

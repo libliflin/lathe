@@ -189,7 +189,7 @@
     <span class="value" id="stat-cycles">—</span>
   </div>
   <div class="stat">
-    <span class="label">Pass@1</span>
+    <span class="label">Clean</span>
     <span class="value" id="stat-pass1">—</span>
   </div>
   <span class="spacer"></span>
@@ -305,7 +305,7 @@ function createCard(lathe) {
   const uptime = mkMetric('Uptime');
 
   const pass1Wrap = el('div', 'metric');
-  pass1Wrap.append(el('span', 'label', 'Pass@1'));
+  pass1Wrap.append(el('span', 'label', 'Clean'));
   const pass1Val = el('span', 'value');
   const pass1Sub = el('span', 'sub');
   pass1Val.append(document.createTextNode('—'), pass1Sub);
