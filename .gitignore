@@ -1,5 +1,5 @@
 # Compiled binary
 /lathe
 
-# Lathe session state (ephemeral, engine-managed)
-.lathe/session/
+# Lathe doesn't run on itself — any local .lathe/ here is scratch
+.lathe/

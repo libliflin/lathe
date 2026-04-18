@@ -1,8 +1,0 @@
-Done. `.lathe/verifier.md` is written.
-
-Key choices made based on reading the builder and test patterns:
-
-- **Verification themes are project-specific**: prompt injection via GitHub content, macOS/Linux platform divergence, and the type-system-vs-runtime-check distinction are all risks the builder explicitly knows about — the verifier should too.
-- **Test pattern encoded**: `strings.Contains` substring checks, `package main`, `setupTestState(t)` for path isolation. The verifier knows the convention so it can add tests that fit, not tests that stand out.
-- **Meta-prompt verification**: the builder has no automated test for template changes, just a self-report. The verifier is told to read the template and check whether the explanation in the changelog is coherent — the only real check available.
-- **No state descriptions**: the file doesn't say "tests exist" or "coverage is X" — it describes what to care about, not where the project stood today.
