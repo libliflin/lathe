@@ -194,10 +194,13 @@ func engineRun(args []string) {
 
 		if err := runCycle(cycle, tool); err != nil {
 			if errors.Is(err, errMaxRounds) {
-				log("Stopping: %v", err)
-				return
+				// Oscillation cap = "the dialog got stuck." Hand to the next cycle's
+				// goal-setter rather than exiting — goal-setter sees the stuck PRs
+				// via stale-prs.txt and can pick a new angle or close what's stuck.
+				log("Oscillation cap reached — handing to next goal-setter cycle.")
+			} else {
+				log("Cycle %d error: %v", cycle, err)
 			}
-			log("Cycle %d error: %v", cycle, err)
 		}
 
 		cycle++
