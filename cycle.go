@@ -50,7 +50,7 @@ func runCycle(cycle int, tool string) error {
 		}); err != nil {
 			return err
 		}
-		builderContributed := getHead(baseBranch) != builderHead
+		builderContributed := classifyContribution(builderHead, getHead(baseBranch), "builder")
 
 		verifierHead := getHead(baseBranch)
 		if err := runStep(cycle, fmt.Sprintf("round-%d-verify", round), tool, func() error {
@@ -58,7 +58,7 @@ func runCycle(cycle int, tool string) error {
 		}); err != nil {
 			return err
 		}
-		verifierContributed := getHead(baseBranch) != verifierHead
+		verifierContributed := classifyContribution(verifierHead, getHead(baseBranch), "verifier")
 
 		// CI failure invalidates "converged" — if CI is red, the work isn't done even
 		// if neither agent committed this round. Re-run the verifier to investigate.
@@ -157,6 +157,72 @@ func writeErrorState(cycle, round int, kind, detail string) {
 	b.WriteString("When you've resolved things: `lathe start` to resume. `preStartCleanup` will merge any greens that appeared, leave the rest for the new session's agents to see.\n")
 
 	_ = os.WriteFile(filepath.Join(latheSession, "error.md"), []byte(b.String()), 0644)
+}
+
+// classifyContribution decides whether a step's commit(s) counted as substantive.
+// Returns true only when base HEAD moved AND the landed changes touched real code.
+// When the step's only net effect was changelog expression (the agent wanting to
+// be heard — which is valid and shouldn't be suppressed), returns false AND sleeps
+// 5 minutes. That pause gives the dialog breathing room and doubles as rate-limit
+// insurance when agents are cycling fast.
+func classifyContribution(beforeSHA, afterSHA, role string) bool {
+	if beforeSHA == "" || afterSHA == "" || beforeSHA == afterSHA {
+		return false // no commits = clean stand-down
+	}
+	if onlyChangelogChanges(beforeSHA, afterSHA) {
+		log("%s round produced only changelog/lathe-metadata changes — not counted as substantive.", role)
+		log("Sleeping 5 minutes to give the dialog breathing room ...")
+		time.Sleep(5 * time.Minute)
+		return false
+	}
+	return true
+}
+
+// onlyChangelogChanges reports whether every file touched between two SHAs is a
+// changelog-class file (lathe internals, CHANGELOG.md, or similar). Used to
+// distinguish agent self-expression from actual project work.
+func onlyChangelogChanges(fromSHA, toSHA string) bool {
+	out, err := runCapture("git", "diff", "--name-only", fromSHA+".."+toSHA)
+	if err != nil {
+		return false
+	}
+	trimmed := strings.TrimSpace(out)
+	if trimmed == "" {
+		return false
+	}
+	for _, f := range strings.Split(trimmed, "\n") {
+		f = strings.TrimSpace(f)
+		if f == "" {
+			continue
+		}
+		if !isChangelogLike(f) {
+			return false
+		}
+	}
+	return true
+}
+
+// isChangelogLike matches paths that are agent-metadata / changelog expression
+// rather than project code. Conservative: anything under .lathe/, and common
+// changelog filenames at any depth.
+func isChangelogLike(path string) bool {
+	if strings.HasPrefix(path, ".lathe/") {
+		return true
+	}
+	base := strings.ToLower(strings.TrimPrefix(path, "./"))
+	// filename without dir component
+	if i := strings.LastIndex(base, "/"); i >= 0 {
+		base = base[i+1:]
+	}
+	switch {
+	case strings.HasPrefix(base, "changelog"),
+		strings.HasPrefix(base, "changes.md"),
+		strings.HasPrefix(base, "changes."),
+		strings.HasPrefix(base, "session-log"),
+		strings.HasPrefix(base, "lathe-changelog"):
+		return true
+	}
+	return false
 }
 
 // getHead returns the SHA of the given branch locally, or "" if unknown.
