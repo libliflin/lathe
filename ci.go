@@ -157,7 +157,14 @@ func waitForCIDirect() {
 // preserve that work, and reports the rest so the user knows what's inherited.
 // Fail/pending orphans are picked up by the first step's resolveStalePRs and
 // exposed to the new session's agents via stale-prs.txt.
+//
+// Also self-heals a common repo-hygiene issue: .lathe/session/ is in .gitignore,
+// but if any of its files were tracked before that took effect, git will keep
+// tracking them. Agents running `git add -A` would then ship session/changelog.md
+// churn as real commits on every round. We detect + untrack here.
 func preStartCleanup() {
+	selfHealSessionTracking()
+
 	out, err := runCapture("gh", "pr", "list",
 		"--state", "open",
 		"--author", "@me",
@@ -211,6 +218,23 @@ func preStartCleanup() {
 		fmt.Printf("  Summary: %d merged, %d failing, %d pending.\n", merged, fails, pendings)
 	}
 	fmt.Println()
+}
+
+// selfHealSessionTracking detects session files tracked by git (typically from
+// pre-gitignore state) and untracks them. Doesn't commit — the staged deletion
+// flows through the first PR this session opens, so the untracking lands as
+// part of normal lathe work rather than requiring direct pushes to base (which
+// branch protection often blocks).
+func selfHealSessionTracking() {
+	tracked, err := runCapture("git", "ls-files", ".lathe/session/")
+	if err != nil || strings.TrimSpace(tracked) == "" {
+		return
+	}
+	fileCount := len(strings.Split(strings.TrimSpace(tracked), "\n"))
+	fmt.Println()
+	fmt.Printf("  Untracking %d file(s) from .lathe/session/ (gitignored, but previously tracked).\n", fileCount)
+	fmt.Println("  The deletion will flow through the first PR this session opens.")
+	_ = runSilent("git", "rm", "-r", "--cached", ".lathe/session/")
 }
 
 // resolveStalePRs finds any open lathe-branch PRs (from this or earlier steps)
