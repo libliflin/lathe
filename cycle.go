@@ -161,16 +161,16 @@ func writeErrorState(cycle, round int, kind, detail string) {
 
 // classifyContribution decides whether a step's commit(s) counted as substantive.
 // Returns true only when base HEAD moved AND the landed changes touched real code.
-// When the step's only net effect was changelog expression (the agent wanting to
-// be heard — which is valid and shouldn't be suppressed), returns false AND sleeps
-// 5 minutes. That pause gives the dialog breathing room and doubles as rate-limit
-// insurance when agents are cycling fast.
+// When the step's only net effect was non-substantive — changelog expression the
+// agent wanted to be heard for, or force-added build artifacts / gitignored files —
+// returns false AND sleeps 5 minutes. The pause gives the dialog breathing room and
+// doubles as rate-limit insurance when agents are cycling fast.
 func classifyContribution(beforeSHA, afterSHA, role string) bool {
 	if beforeSHA == "" || afterSHA == "" || beforeSHA == afterSHA {
 		return false // no commits = clean stand-down
 	}
-	if onlyChangelogChanges(beforeSHA, afterSHA) {
-		log("%s round produced only changelog/lathe-metadata changes — not counted as substantive.", role)
+	if reason, yes := onlyNonSubstantiveChanges(beforeSHA, afterSHA); yes {
+		log("%s round was non-substantive (%s) — not counted toward convergence.", role, reason)
 		log("Sleeping 5 minutes to give the dialog breathing room ...")
 		time.Sleep(5 * time.Minute)
 		return false
@@ -178,51 +178,81 @@ func classifyContribution(beforeSHA, afterSHA, role string) bool {
 	return true
 }
 
-// onlyChangelogChanges reports whether every file touched between two SHAs is a
-// changelog-class file (lathe internals, CHANGELOG.md, or similar). Used to
-// distinguish agent self-expression from actual project work.
-func onlyChangelogChanges(fromSHA, toSHA string) bool {
+// onlyNonSubstantiveChanges reports whether every file touched between two SHAs
+// is either agent metadata (changelog expression under .lathe/, changelog files)
+// or gitignored (force-added build artifacts, caches, etc). The `.gitignore` is
+// the canonical "don't commit this" declaration — anything that slipped past it
+// via `git add -f` counts as non-substantive by definition.
+// Returns (reason, true) on detection so the log can explain what triggered.
+func onlyNonSubstantiveChanges(fromSHA, toSHA string) (string, bool) {
 	out, err := runCapture("git", "diff", "--name-only", fromSHA+".."+toSHA)
 	if err != nil {
-		return false
+		return "", false
 	}
 	trimmed := strings.TrimSpace(out)
 	if trimmed == "" {
-		return false
+		return "", false
 	}
+	sawChangelog := false
+	sawIgnored := false
 	for _, f := range strings.Split(trimmed, "\n") {
 		f = strings.TrimSpace(f)
 		if f == "" {
 			continue
 		}
-		if !isChangelogLike(f) {
-			return false
+		switch classifyPath(f) {
+		case pathChangelog:
+			sawChangelog = true
+		case pathIgnored:
+			sawIgnored = true
+		case pathSubstantive:
+			return "", false
 		}
 	}
-	return true
+	switch {
+	case sawChangelog && sawIgnored:
+		return "changelog + gitignored files", true
+	case sawChangelog:
+		return "changelog / lathe-metadata only", true
+	case sawIgnored:
+		return "only gitignored files (likely force-added build artifacts)", true
+	default:
+		return "", false
+	}
 }
 
-// isChangelogLike matches paths that are agent-metadata / changelog expression
-// rather than project code. Conservative: anything under .lathe/, and common
-// changelog filenames at any depth.
-func isChangelogLike(path string) bool {
+type pathKind int
+
+const (
+	pathSubstantive pathKind = iota
+	pathChangelog
+	pathIgnored
+)
+
+// classifyPath bins a touched file path. Order matters: changelog/.lathe paths
+// are tagged first so they don't muddle the "ignored" reason in messaging.
+func classifyPath(path string) pathKind {
 	if strings.HasPrefix(path, ".lathe/") {
-		return true
+		return pathChangelog
 	}
-	base := strings.ToLower(strings.TrimPrefix(path, "./"))
-	// filename without dir component
+	base := path
 	if i := strings.LastIndex(base, "/"); i >= 0 {
 		base = base[i+1:]
 	}
+	lower := strings.ToLower(base)
 	switch {
-	case strings.HasPrefix(base, "changelog"),
-		strings.HasPrefix(base, "changes.md"),
-		strings.HasPrefix(base, "changes."),
-		strings.HasPrefix(base, "session-log"),
-		strings.HasPrefix(base, "lathe-changelog"):
-		return true
+	case strings.HasPrefix(lower, "changelog"),
+		strings.HasPrefix(lower, "changes.md"),
+		strings.HasPrefix(lower, "changes."),
+		strings.HasPrefix(lower, "session-log"),
+		strings.HasPrefix(lower, "lathe-changelog"):
+		return pathChangelog
 	}
-	return false
+	// Anything in .gitignore that still ended up in the diff was force-added.
+	if err := runSilent("git", "check-ignore", "-q", path); err == nil {
+		return pathIgnored
+	}
+	return pathSubstantive
 }
 
 // getHead returns the SHA of the given branch locally, or "" if unknown.
