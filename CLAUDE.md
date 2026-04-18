@@ -20,7 +20,7 @@ Single Go binary with all templates embedded via `go:embed`. Builds for all plat
 **`lathe init`** — The alignment step. Runs five sequential AI calls:
 1. `meta-snapshot.md` → `.lathe/snapshot.sh` — project-specific state collection script. The agent reads the project and writes a snapshot tailored to its build/test/lint tools.
 2. `meta-champion.md` → `.lathe/agents/champion.md` — the champion's playbook: stakeholder map, tensions, emotional signals, how to rank, the per-cycle output format. Values manifesto spliced in.
-3. `meta-brand.md` → `.lathe/agents/brand.md` — the project's character, cited from real signals (errors, README, CLI output). Loaded into every runtime prompt as a tint on decisions.
+3. `meta-brand.md` → `.lathe/brand.md` — the project's character, cited from real signals (errors, README, CLI output). Loaded into every runtime prompt as a tint on decisions. Lives at the root (not under `agents/`) because it's a reference doc, not a loop agent.
 4. `meta-builder.md` → `.lathe/agents/builder.md` — implementation quality (creative/synthesis posture), CI/PR workflow. Reads champion.md for alignment.
 5. `meta-verifier.md` → `.lathe/agents/verifier.md` — comparative/scrutinizing posture, the shape-specific verification playbook. Reads builder.md for failure modes.
 
@@ -83,10 +83,12 @@ templates/
 **Config** — written by `lathe init`, survives stop, committed by the user:
 
 ```
-.lathe/agents/champion.md    — Champion's playbook (stakeholder map, tensions, output format)
-.lathe/agents/brand.md       — Project character (voice, edge-case behavior). Loaded into every runtime prompt.
-.lathe/agents/builder.md     — Builder behavioral instructions
-.lathe/agents/verifier.md    — Verifier behavioral instructions
+.lathe/agents/               — The three roles that run in the cycle loop:
+  champion.md                —   Champion's playbook (stakeholder map, tensions, output format)
+  builder.md                 —   Builder behavioral instructions
+  verifier.md                —   Verifier behavioral instructions
+.lathe/brand.md              — Project character. Reference doc loaded into every runtime
+                               prompt as a tint (not a loop agent — no runtime step)
 .lathe/alignment-summary.md  — Plain-English summary of alignment decisions (human-facing)
 .lathe/snapshot.sh           — Project state collection script
 .lathe/skills/*.md           — Project-specific knowledge

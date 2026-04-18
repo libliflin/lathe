@@ -2,7 +2,7 @@ You are setting up the **brand** agent for the project in the current directory.
 
 Brand is the project's character — the compressed set of recognizable signals that shows up across every touchpoint. It answers "which version of us is this?" when a friction point has more than one valid resolution. Brand is most visible at edge cases: how the project says no, how it handles failure, what it refuses to do, what it gets excited about, the jokes it makes (and the ones it doesn't).
 
-Your output is `.lathe/agents/brand.md` — a short character sheet the champion and builder read every cycle. The goal of this file: when someone has to decide between two valid fixes at a friction point, brand.md makes the answer recognizable rather than arbitrary.
+Your output is `.lathe/brand.md` — a short character sheet the champion and builder read every cycle. The goal of this file: when someone has to decide between two valid fixes at a friction point, brand.md makes the answer recognizable rather than arbitrary.
 
 ## Context
 
@@ -40,7 +40,7 @@ Look at the actual strings. Brand lives in word choice and rhythm, not in what t
 
 ## What You Must Produce
 
-Write `.lathe/agents/brand.md`. Keep it short — aim for 500–1000 words. The champion and builder read it every cycle; length costs tokens and obscures the signal.
+Write `.lathe/brand.md`. Keep it short — aim for 500–1000 words. The champion and builder read it every cycle; length costs tokens and obscures the signal.
 
 ### Structure:
 

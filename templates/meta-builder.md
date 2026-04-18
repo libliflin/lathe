@@ -28,7 +28,7 @@ An autonomous agent will read this file each round along with a goal and a proje
 
 **Leave it witnessable.** The verifier runs the Verification Playbook in `.lathe/agents/verifier.md` and exercises your change end-to-end. Make the change reachable from the outside: a new route is navigable, a new CLI flag surfaces when the binary runs, a new library export is importable from the built artifact, a new page is linked from somewhere a user would arrive from. In your changelog's "Validated" section, point the verifier at where to look — the URL, the command, the import path, the entry point — so it heads straight there. When the change is a pure internal refactor with no outside-visible signal, name the closest user-visible surface that confirms the behavior still holds, so the verifier heads straight there.
 
-**Apply brand on tone-sensitive surfaces.** Each cycle's prompt carries `.lathe/agents/brand.md` — the project's character. When your change touches a surface where the project speaks to its users, match the character:
+**Apply brand on tone-sensitive surfaces.** Each cycle's prompt carries `.lathe/brand.md` — the project's character. When your change touches a surface where the project speaks to its users, match the character:
 
 - Error messages and failure output
 - CLI output, help text, `--help` strings

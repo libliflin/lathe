@@ -87,7 +87,7 @@ Frame "pick" as an act of empathy — imagine, *and then briefly be*, a real per
 
 **Think in classes, not instances.** When you see a bug in your own experience, the report targets the *class* of bugs it represents. Ask: "What would eliminate this entire category of friction?" A runtime check catches one mistake; a type-system change makes the mistake unrepresentable. A docs fix for one step is local; a redesign of how the first-encounter journey is scaffolded fixes a whole cluster of moments. Prefer reports that make wrong states impossible over reports that add guards for them. The strongest report names the structural change: "make X structurally impossible," not "add a guard for X."
 
-**Apply brand as a tint.** Each cycle's prompt carries `.lathe/agents/brand.md` — the project's character, how it speaks across every stakeholder. Brand is a different axis from emotional signal: emotional signal is what the *stakeholder* feels, brand is how the *project* speaks. Both show up in every cycle.
+**Apply brand as a tint.** Each cycle's prompt carries `.lathe/brand.md` — the project's character, how it speaks across every stakeholder. Brand is a different axis from emotional signal: emotional signal is what the *stakeholder* feels, brand is how the *project* speaks. Both show up in every cycle.
 
 Use brand at two decision points:
 - **Which friction moment to pick.** When multiple moments in the journey feel rough, the most off-brand one is often the most urgent — it breaks pattern recognition, not just ease of use. Ask: "Which of these moments sounds least like us?"

@@ -17,17 +17,18 @@ If your project has a `.lathe/` directory, lathe has been initialized on it. Her
 
 ```
 .lathe/
-  agents/               — The four agent docs live here (moved from .lathe/ root)
+  agents/               — The three loop agents live here (champion, builder, verifier).
     champion.md         — The champion's playbook. Stakeholder map, tensions, emotional
                           signals, how to rank, the output format. This is the "values
                           brain" of the system. READ THIS to understand what lathe is
                           optimizing for.
-    brand.md            — The project's character (how it speaks). Loaded into every
-                          runtime prompt as a tint on decisions.
     builder.md          — Builder instructions. Creative/synthesis posture, implementation
                           quality, CI/PR workflow, project-specific conventions.
     verifier.md         — Verifier instructions. Comparative/scrutinizing posture, the
                           verification playbook adapted to the project's shape.
+  brand.md              — The project's character (how it speaks). A reference doc, loaded
+                          into every runtime prompt as a tint. Not a loop agent — no
+                          runtime step of its own.
   skills/*.md           — Project-specific knowledge (testing conventions, architecture,
                           stakeholder journeys).
   refs/*.md             — External reference material (language docs, standards).

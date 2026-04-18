@@ -221,11 +221,14 @@ func preStartCleanup() {
 	fmt.Println()
 }
 
-// migrateLegacyAgentLayout migrates agent docs to their current home: .lathe/agents/.
-// Handles two legacy layouts:
-//  1. .lathe/goal.md              → .lathe/agents/champion.md  (name + location)
-//  2. .lathe/<role>.md at root    → .lathe/agents/<role>.md    (location only)
-// Silent no-op when no migration is needed.
+// migrateLegacyAgentLayout normalizes the layout of agent docs. Runtime roles
+// (champion, builder, verifier) live in .lathe/agents/. Brand is NOT a runtime
+// role — it's loaded as a reference tint — and lives at .lathe/brand.md.
+//
+// Handles legacy layouts silently:
+//  1. .lathe/goal.md              → .lathe/agents/champion.md  (pre-rename)
+//  2. .lathe/<role>.md at root    → .lathe/agents/<role>.md    (champion/builder/verifier)
+//  3. .lathe/agents/brand.md      → .lathe/brand.md            (brand is not a loop agent)
 func migrateLegacyAgentLayout() {
 	_ = os.MkdirAll(latheAgents, 0755)
 
@@ -242,8 +245,8 @@ func migrateLegacyAgentLayout() {
 		}
 	}
 
-	// Step 2: .lathe/<role>.md at root → .lathe/agents/<role>.md
-	for _, name := range []string{"champion.md", "brand.md", "builder.md", "verifier.md"} {
+	// Step 2: runtime roles at .lathe/ root → .lathe/agents/
+	for _, name := range []string{"champion.md", "builder.md", "verifier.md"} {
 		src := filepath.Join(latheDir, name)
 		dst := filepath.Join(latheAgents, name)
 		if _, err := os.Stat(src); err != nil {
@@ -257,9 +260,20 @@ func migrateLegacyAgentLayout() {
 		}
 	}
 
+	// Step 3: brand out of agents/ (it's a reference doc, not a loop agent)
+	brandInAgents := filepath.Join(latheAgents, "brand.md")
+	brandTarget := filepath.Join(latheDir, "brand.md")
+	if _, err := os.Stat(brandInAgents); err == nil {
+		if _, err := os.Stat(brandTarget); os.IsNotExist(err) {
+			if err := os.Rename(brandInAgents, brandTarget); err == nil {
+				migrated = append(migrated, "agents/brand.md → brand.md (not a loop agent)")
+			}
+		}
+	}
+
 	if len(migrated) > 0 {
 		fmt.Println()
-		fmt.Println("  Migrated agent docs into .lathe/agents/:")
+		fmt.Println("  Normalized .lathe/ layout:")
 		for _, m := range migrated {
 			fmt.Println("    " + m)
 		}

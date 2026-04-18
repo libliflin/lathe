@@ -38,15 +38,17 @@ The champion-uses-the-project model above is the direction; in-context journey w
 Analyzes your project and generates behavioral docs that the runtime agents read every cycle. The binary contains meta-prompts (templates you never see) that tell an AI how to study your project and produce these files:
 
 ```
-.lathe/agents/champion.md  — The champion's playbook: who the project serves,
-                             first-encounter journeys, emotional signal per
-                             stakeholder, tensions, how to rank work each cycle.
-.lathe/agents/brand.md     — The project's character: how it speaks across
-                             every touchpoint. Loaded as a tint each cycle.
-.lathe/agents/builder.md   — The builder's guide: implementation quality,
-                             CI/PR workflow, project-specific conventions.
-.lathe/agents/verifier.md  — The verifier's playbook: what to check, the
-                             verification playbook, failure modes.
+.lathe/agents/               — The three roles that run in the cycle loop:
+  champion.md                —   Who the project serves, first-encounter
+                                 journeys, emotional signal per stakeholder,
+                                 tensions, how to rank work each cycle.
+  builder.md                 —   Implementation quality, CI/PR workflow,
+                                 project-specific conventions.
+  verifier.md                —   What to check, the verification playbook,
+                                 failure modes.
+.lathe/brand.md              — The project's character. A reference doc
+                               loaded into every prompt as a tint (not a
+                               loop agent — no runtime step of its own).
 ```
 
 Also writes: `skills/*.md` (project knowledge, including the stakeholder journeys the champion walks each cycle), `alignment-summary.md` (human-readable summary).
@@ -142,9 +144,10 @@ templates/values-manifesto.md — Design philosophy, spliced into meta-champion.
 ```
 .lathe/agents/champion.md    — Champion reads this to pick a stakeholder,
                                walk their journey, and decide what to work on
-.lathe/agents/brand.md       — Project character (tint on every decision)
 .lathe/agents/builder.md     — Builder reads this to know how to implement
 .lathe/agents/verifier.md    — Verifier reads this to know what to check
+.lathe/brand.md              — Project character (tint on every decision — not
+                               a loop agent, just reference context)
 ```
 
 **Source files:**
@@ -161,10 +164,11 @@ agent.go        — Agent prompt builders ci.go       — CI polling, auto-merge
 **Config** — written by `lathe init`, survives stop, committed by the user:
 
 ```
-.lathe/agents/champion.md    — Champion's playbook
-.lathe/agents/brand.md       — Project character
-.lathe/agents/builder.md     — Builder behavioral instructions
-.lathe/agents/verifier.md    — Verifier behavioral instructions
+.lathe/agents/               — Loop agents (run in the cycle):
+  champion.md                —   Champion's playbook
+  builder.md                 —   Builder behavioral instructions
+  verifier.md                —   Verifier behavioral instructions
+.lathe/brand.md              — Project character (reference doc, loaded as tint)
 .lathe/alignment-summary.md  — Plain-English summary for the user
 .lathe/snapshot.sh           — Project state collection script
 .lathe/skills/*.md           — Project-specific knowledge

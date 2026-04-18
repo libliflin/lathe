@@ -178,6 +178,9 @@ func cmdInit(args []string) {
 			// Ensure snapshot.sh is executable
 			os.Chmod(filepath.Join(latheDir, "snapshot.sh"), 0755)
 			fmt.Printf("  Updated: %s/snapshot.sh\n", latheDir)
+		} else if targetAgent == "brand" {
+			// Brand is a reference doc, not a loop agent — lives at .lathe/ root.
+			fmt.Printf("  Updated: %s/brand.md\n", latheDir)
 		} else {
 			fmt.Printf("  Updated: %s/%s.md\n", latheAgents, targetAgent)
 		}
@@ -277,7 +280,7 @@ func cmdInit(args []string) {
 		fmt.Printf("  Created: %s/\n", latheDir)
 	}
 	fmt.Printf("  Champion: %s/champion.md\n", latheAgents)
-	fmt.Printf("  Brand:    %s/brand.md\n", latheAgents)
+	fmt.Printf("  Brand:    %s/brand.md\n", latheDir)
 	fmt.Printf("  Builder:  %s/builder.md\n", latheAgents)
 	fmt.Printf("  Verify:   %s/verifier.md\n", latheAgents)
 	fmt.Printf("  Skills:   %s/\n", latheSkills)
