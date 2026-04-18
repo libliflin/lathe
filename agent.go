@@ -115,6 +115,14 @@ func runBuilder(cycle, round int, tool string) error {
 		b.WriteString("Fix the CI failure. Tests may pass locally (e.g. runtime tests skipped on macOS) but fail on Linux CI.\n\n")
 	}
 
+	// Stale PR context — orphaned PRs from previous steps the agent can act on
+	stalePRsFile := filepath.Join(latheSession, "stale-prs.txt")
+	if data, err := os.ReadFile(stalePRsFile); err == nil && len(data) > 0 {
+		b.WriteString("---\n")
+		b.Write(data)
+		b.WriteString("\n\n")
+	}
+
 	// Instructions
 	b.WriteString("---\n# Your Task\n\n")
 	if round == 1 {
@@ -122,7 +130,8 @@ func runBuilder(cycle, round int, tool string) error {
 	} else {
 		b.WriteString("Continue the dialog. Read the verifier's contribution from the previous round. From your creative lens, decide: refine, extend, or stand down. When you have something worth adding, commit and push it. When the work stands complete in your view, write the changelog with \"Applied: Nothing this round — the verifier's additions complete the work from my lens\" and skip the commit.\n")
 	}
-	b.WriteString("If CI is failing, fix CI first — that's always top priority.\n\n")
+	b.WriteString("If CI is failing, fix CI first — that's always top priority.\n")
+	b.WriteString("If the Stale Lathe PRs section is present above, handle those first — they block progress on this cycle's dialog.\n\n")
 	b.WriteString("**Changelog:** Write a changelog to `.lathe/session/changelog.md` describing what you did this round (or explaining why you stood down).\n\n")
 
 	return invokeAgent(b.String(), cycle, fmt.Sprintf("build-%d", round), tool)
@@ -165,7 +174,15 @@ func runVerifier(cycle, round int, tool string) error {
 		b.WriteString("CI failed. Here is the failure output:\n\n```\n")
 		b.Write(data)
 		b.WriteString("\n```\n\n")
-		b.WriteString("Do NOT give VERDICT: PASS if the code would cause these same CI failures. Tests may pass locally but fail on Linux CI.\n\n")
+		b.WriteString("The work is not done while CI is red — from your comparative lens, adding code that closes the gap is in scope.\n\n")
+	}
+
+	// Stale PR context — orphaned PRs from previous steps the verifier can act on
+	stalePRsFile := filepath.Join(latheSession, "stale-prs.txt")
+	if data, err := os.ReadFile(stalePRsFile); err == nil && len(data) > 0 {
+		b.WriteString("---\n")
+		b.Write(data)
+		b.WriteString("\n\n")
 	}
 
 	// Instructions

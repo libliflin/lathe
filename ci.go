@@ -156,8 +156,10 @@ func waitForCIDirect() {
 // CI took longer than waitForCI's per-step budget — the PR sat green but unmerged
 // until the next step picked it up. Called at the top of each runStep.
 //
-// PRs still pending or failing are left open — the next agent sees them in the
-// snapshot's "My Open PRs" section and can decide what to do.
+// For PRs still failing or pending, writes context to session/stale-prs.txt so the
+// next agent's prompt includes the failure log output and concrete instructions on
+// how to fix or close each one. Without this file the agent would only know open
+// PRs exist from the snapshot's bucket rollup — enough to notice, not enough to act.
 func resolveStalePRs() {
 	s, _ := readSession()
 	if s.Mode != "branch" {
@@ -170,10 +172,13 @@ func resolveStalePRs() {
 		"--json", "number,headRefName",
 		"--jq", `.[] | select(.headRefName | startswith("lathe/")) | [.number, .headRefName] | @tsv`)
 	if err != nil || strings.TrimSpace(out) == "" {
+		clearStalePRsContext()
 		return
 	}
 
 	merged := 0
+	var remaining []stalePR
+
 	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
 		parts := strings.SplitN(line, "\t", 2)
 		if len(parts) < 2 {
@@ -182,19 +187,23 @@ func resolveStalePRs() {
 		prNum := strings.TrimSpace(parts[0])
 		branch := strings.TrimSpace(parts[1])
 
-		switch probePRCI(prNum) {
+		status := probePRCI(prNum)
+		switch status {
 		case "pass":
 			log("Resolving stale PR #%s (%s) — CI passed, merging ...", prNum, branch)
 			if err := runSilent("gh", "pr", "merge", prNum, "--squash", "--delete-branch"); err != nil {
 				log("WARN: merge of stale PR #%s failed: %v", prNum, err)
+				remaining = append(remaining, stalePR{prNum, branch, "merge-failed"})
 			} else {
 				_ = runSilent("git", "branch", "-D", branch)
 				merged++
 			}
 		case "fail":
-			log("Stale PR #%s (%s): CI failed — leaving open so next agent sees it.", prNum, branch)
+			log("Stale PR #%s (%s): CI failed — adding to agent context.", prNum, branch)
+			remaining = append(remaining, stalePR{prNum, branch, "fail"})
 		case "pending":
-			log("Stale PR #%s (%s): CI still running — leaving open.", prNum, branch)
+			log("Stale PR #%s (%s): CI still running — adding to agent context.", prNum, branch)
+			remaining = append(remaining, stalePR{prNum, branch, "pending"})
 		}
 	}
 
@@ -206,6 +215,108 @@ func resolveStalePRs() {
 		_ = runSilent("git", "fetch", "origin", base)
 		_ = runSilent("git", "pull", "--ff-only", "origin", base)
 	}
+
+	writeStalePRsContext(remaining)
+}
+
+// stalePR describes an orphan PR passed between resolveStalePRs and writeStalePRsContext.
+type stalePR struct {
+	num, branch, status string
+}
+
+// writeStalePRsContext produces session/stale-prs.txt with concrete handling
+// instructions per stale PR. The next agent's prompt reads this and can act.
+func writeStalePRsContext(entries []stalePR) {
+	if len(entries) == 0 {
+		clearStalePRsContext()
+		return
+	}
+
+	var b strings.Builder
+	b.WriteString("# Stale Lathe PRs (from previous dialog rounds)\n\n")
+	b.WriteString(fmt.Sprintf("%d open lathe PR(s) need your attention.\n\n", len(entries)))
+	b.WriteString("These are orphans from earlier rounds — the engine didn't merge them because CI was still running or failed. Decide per PR:\n\n")
+	b.WriteString("- **Failing CI**: check out the branch with `gh pr checkout <N>`, push a fix commit (goes to the same PR), then push. The next engine sweep will merge it once CI turns green. Or, if the work is no longer relevant, close it with `gh pr close <N> --delete-branch`.\n")
+	b.WriteString("- **Pending CI**: the engine re-probes at the start of each step — leave these alone, the next sweep will merge them.\n")
+	b.WriteString("- **merge-failed**: usually a conflict with base. Check out and rebase, or close if superseded.\n\n")
+
+	for _, e := range entries {
+		b.WriteString(fmt.Sprintf("## PR #%s — %s [%s]\n\n", e.num, e.branch, e.status))
+
+		// Short title + summary
+		title, _ := runCapture("gh", "pr", "view", e.num, "--json", "title", "--jq", ".title")
+		if t := strings.TrimSpace(title); t != "" {
+			b.WriteString("Title: " + t + "\n")
+		}
+
+		if e.status == "fail" {
+			failLog := fetchPRFailureLog(e.num)
+			if failLog != "" {
+				b.WriteString("\n```\n")
+				b.WriteString(failLog)
+				b.WriteString("\n```\n")
+			}
+		}
+		b.WriteString("\n")
+	}
+
+	// Cap overall size so prompts stay reasonable.
+	s := b.String()
+	const maxBytes = 8000
+	if len(s) > maxBytes {
+		s = s[:maxBytes] + "\n\n(truncated — inspect full detail with `gh pr view <N>` and `gh run view <runID> --log-failed`)\n"
+	}
+	_ = os.WriteFile(filepath.Join(latheSession, "stale-prs.txt"), []byte(s), 0644)
+}
+
+func clearStalePRsContext() {
+	_ = os.Remove(filepath.Join(latheSession, "stale-prs.txt"))
+}
+
+// fetchPRFailureLog returns a compact failure summary + truncated log for a specific
+// failing PR. Returns empty string when it can't be resolved.
+func fetchPRFailureLog(prNumber string) string {
+	checksJSON, err := runCapture("gh", "pr", "checks", prNumber, "--json", "name,bucket,link")
+	if err != nil {
+		return ""
+	}
+	var checks []struct {
+		Name, Bucket, Link string
+	}
+	if err := json.Unmarshal([]byte(checksJSON), &checks); err != nil {
+		return ""
+	}
+
+	var out strings.Builder
+	for _, c := range checks {
+		if c.Bucket == "fail" {
+			out.WriteString(fmt.Sprintf("FAILED: %s\n", c.Name))
+		}
+	}
+
+	for _, c := range checks {
+		if c.Bucket != "fail" || c.Link == "" {
+			continue
+		}
+		parts := strings.Split(c.Link, "/")
+		for i, p := range parts {
+			if p == "runs" && i+1 < len(parts) {
+				runID := parts[i+1]
+				failLog, err := runCaptureAll("gh", "run", "view", runID, "--log-failed")
+				if err == nil && failLog != "" {
+					// Keep per-PR log modest; tail is where the real error lives.
+					if len(failLog) > 2500 {
+						failLog = failLog[len(failLog)-2500:]
+					}
+					out.WriteString("\n--- Failed log (tail) ---\n")
+					out.WriteString(failLog)
+				}
+				break
+			}
+		}
+		break
+	}
+	return out.String()
 }
 
 // probePRCI returns "pass", "fail", or "pending" for a PR's current CI status.
