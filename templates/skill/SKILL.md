@@ -37,33 +37,37 @@ If your project has a `.lathe/` directory, lathe has been initialized on it. Her
   session/              — Ephemeral engine runtime (gitignored, wiped on stop):
     session.json        — Current session (branch, PR number, mode)
     theme.txt           — Session purpose set by user via --theme
-    cycle.json          — Current cycle number and phase
+    cycle.json          — Current cycle's ID (timestamp) and phase
     snapshot.txt        — Latest snapshot output
-    changelog.md        — Per-step output file; each agent writes their report here
+    journey.md          — Champion's artifact for THIS cycle (stable during the cycle)
+    whiteboard.md       — Shared scratchpad for THIS cycle (wiped at cycle boundary,
+                          any loop agent may read/write/edit/wipe freely)
     stale-prs.txt       — Context on orphan PRs across cycles
     error.md            — Written if the dialog hits the oscillation cap (human review)
-    history/            — Archived per-cycle changelogs and snapshots
-    champion-history/   — Archived champion reports (the champion sees last 4)
+    history/<cycle-id>/ — Per-cycle archive: journey.md, whiteboard.md, snapshot.txt
+                          (cycle-id is a timestamp like 20260418-083045, globally unique)
     logs/               — Per-step agent logs
 ```
 
 ## How a Cycle Works
 
-One cycle = champion + dialog between builder and verifier. Convergence is the signal, not a verdict.
+One cycle = champion + dialog between builder and verifier. Convergence is the signal, not a verdict. Each cycle has a timestamp ID (`YYYYMMDD-HHMMSS`, UTC — globally unique, safe to reference in code comments).
 
-1. Champion reads snapshot + git log + last 4 cycles + stakeholder playbook; picks one stakeholder, becomes them, walks their first-encounter journey, writes a report.
-2. Champion's report archives; builder reads it next.
-3. Builder creates a PR implementing the change; CI runs; merge lands on main.
-4. Verifier reads the builder's diff, runs the verification playbook, adds what's missing (tests, edges, error handling) and pushes.
-5. Next round: builder reads what verifier added, refines or stands down. Verifier reads that, adds more or stands down.
-6. Convergence = a round where neither commits substantively. Cycle advances.
-7. Safety cap: 20 rounds without convergence → error state written to `.lathe/session/error.md`, engine halts for human review.
+1. Champion reads `agents/champion.md` + snapshot + git log + last 4 cycles' journeys; picks one stakeholder, becomes them, walks their first-encounter journey, writes `session/journey.md` (stable for this cycle).
+2. Builder creates a PR implementing the journey's goal; CI runs; merge lands on main.
+3. Verifier reads the builder's diff, runs the verification playbook, adds what's missing (tests, edges, error handling) and pushes.
+4. Next round: builder reads what verifier added and the shared whiteboard, refines or stands down. Verifier reads builder's round and the whiteboard, adds more or stands down.
+5. Convergence = a round where neither commits substantively. The engine measures this from `git rev-parse <base>` deltas. Cycle advances.
+6. Safety cap: 20 rounds without convergence → error state written to `.lathe/session/error.md`, engine halts for human review.
+7. At cycle boundary: whiteboard wipes clean, journey archives to `session/history/<cycle-id>/`, a new cycle starts.
+
+The **whiteboard** (`session/whiteboard.md`) is a shared scratchpad — any loop agent may read, write, edit, append, or wipe it. No prescribed format. Engine wipes at cycle boundary. Non-substantive commits (changelog-only, gitignored, or under `.lathe/*`) don't count toward convergence.
 
 ## How to Review Lathe's Work
 
 When asked to evaluate what lathe has done:
 
-1. **Read the champion-history archive** in `.lathe/session/champion-history/cycle-NNN.md` while the session is alive, or the squash-merge commit messages on main for completed cycles.
+1. **Read the per-cycle archives** in `.lathe/session/history/<timestamp>/journey.md` to see what each champion asked for, or the squash-merge commit messages on main for shipped work.
 2. **Check git log** — are the commits coherent? Do they build on each other?
 3. **Read champion.md** to understand what lathe is optimizing for, then judge whether the changes serve those stakeholders.
 4. **Look at test results** — is the project in better shape than before?
