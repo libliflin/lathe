@@ -40,7 +40,7 @@ An autonomous agent will read this file each round along with the builder's diff
    - Inputs that stress-test this change
    - Places elsewhere in the code where this change could ripple
 
-4. **Is this a patch or a structural fix?** If the builder added a runtime check, ask: could a type, a newtype wrapper, or an API change make this check unnecessary? When the same class of bug can reappear with a future change, the fix is one level deeper than this round. Flag it in findings as a lead for the champion — not a blocker on this round.
+4. **Is this a patch or a structural fix?** When the builder added a runtime check or a workaround, ask: could a type, a newtype wrapper, an API change, or a proper implementation make this check unnecessary? Check `ambition.md` — when the fix papers over a gap the ambition explicitly names, it's off-ambition. Say so out loud in the whiteboard. Name the patch and describe the structural version the builder should have done. Commit the adversarial test that will fail the first time someone tries to use the workaround at real load. The builder reads the whiteboard next round and may tear out the patch and build the real thing — the dialog, not a silent flag, is what escalates. When the builder can't or won't within this cycle, the note in the whiteboard is what the next cycle's champion sees: gap named, not buried.
 
 5. **Are the tests as strong as the change?** When the builder adds functionality, add the tests for it. When the builder's tests cover only the happy path, add the adversarial cases. Tests belong in the project's test suite, alongside the code.
 
@@ -71,7 +71,7 @@ The verifier commits real code that strengthens this round's change:
 - Error handling improvements on the paths the change touches
 - Test fixtures with realistic, adversarial inputs
 
-**Scope.** Keep the work inside this round: add to the builder's change, touch what the builder touched, implement what the goal asked for. Larger structural follow-ups go in findings as leads for the champion next cycle.
+**Scope.** Your additions live in this round's dialog: tests, edge-case fills, adversarial inputs, and corrections that strengthen what the builder brought into being. When you see a structural issue the builder should have done instead of a patch, name it in the whiteboard immediately — don't silently leave it for next cycle. The builder reads the whiteboard next round and decides whether to replace the patch with the structural version. The dialog is the escalation mechanism, not a flag filed for later.
 
 **Rules.**
 - Focus on this round's change. Gaps from previous rounds belong to the champion to prioritize next cycle.

@@ -17,21 +17,23 @@ The core value proposition: lathe init identifies the stakeholders of a project 
 
 Single Go binary with all templates embedded via `go:embed`. Builds for all platforms via GitHub Actions; self-updates via `lathe update`.
 
-**`lathe init`** — The alignment step. Runs five sequential AI calls:
+**`lathe init`** — The alignment step. Runs six sequential AI calls:
 1. `meta-snapshot.md` → `.lathe/snapshot.sh` — project-specific state collection script. The agent reads the project and writes a snapshot tailored to its build/test/lint tools.
-2. `meta-champion.md` → `.lathe/agents/champion.md` — the champion's playbook: stakeholder map, tensions, emotional signals, how to rank, the per-cycle output format. Values manifesto spliced in.
-3. `meta-brand.md` → `.lathe/brand.md` — the project's character, cited from real signals (errors, README, CLI output). Loaded into every runtime prompt as a tint on decisions. Lives at the root (not under `agents/`) because it's a reference doc, not a loop agent.
-4. `meta-builder.md` → `.lathe/agents/builder.md` — implementation quality (creative/synthesis posture), CI/PR workflow. Reads champion.md for alignment.
-5. `meta-verifier.md` → `.lathe/agents/verifier.md` — comparative/scrutinizing posture, the shape-specific verification playbook. Reads builder.md for failure modes.
+2. `meta-champion.md` → `.lathe/agents/champion.md` — the champion's playbook: stakeholder map, tensions, emotional signals, how to rank (ambition-aware), the per-cycle output format. Posture: advocacy. Values manifesto spliced in.
+3. `meta-brand.md` → `.lathe/brand.md` — the project's character (voice-axis), cited from real signals (errors, README, CLI output). Loaded every cycle as a tint. Lives at the root (not under `agents/`) because it's a reference doc, not a loop agent.
+4. `meta-ambition.md` → `.lathe/ambition.md` — the project's destination (destination-axis), cited from real signals (README aspirations, roadmap docs, open issues, competitor references). Future-tense counterpart to brand. Champion uses it to measure journey reach; verifier uses it for the patch-vs-structural test. Emergent mode when evidence is thin.
+5. `meta-builder.md` → `.lathe/agents/builder.md` — implementation quality (creative/synthesis posture), CI/PR workflow. Reads champion.md, applies brand and ambition as tints.
+6. `meta-verifier.md` → `.lathe/agents/verifier.md` — comparative/scrutinizing posture, the shape-specific verification playbook. Reads builder.md for failure modes; uses ambition for off-ambition patch detection.
 
-Use `--agent=snapshot`, `--agent=champion`, `--agent=brand`, `--agent=builder`, or `--agent=verifier` to re-init just one role without touching the others. `--agent=goal` is accepted as an alias for `--agent=champion` during the transition.
+Use `--agent=snapshot`, `--agent=champion`, `--agent=brand`, `--agent=ambition`, `--agent=builder`, or `--agent=verifier` to re-init just one role without touching the others. `--agent=goal` is accepted as an alias for `--agent=champion` during the transition.
 
 **`lathe start`** — The execution loop. One cycle = champion + a dialog between builder and verifier. The builder leans creative/generative; the verifier leans comparative/scrutinizing. Each round both speak: whoever sees something worth adding commits; whoever sees the work as complete from their lens makes no commit. The cycle converges when a round passes with neither committing — no VERDICT, no gate. `roundsPerCycle` (default 20) caps the dialog; hitting the cap writes an error state to `.lathe/session/error.md` and halts the engine for human review. Each step follows identical plumbing: branch → snapshot → agent → safety net → PR → CI → merge → back to main. The engine tracks convergence by comparing `HEAD` of the base branch before and after each agent step, and classifies changelog-only or gitignored-file commits as non-substantive (with a 5-minute breathing-room pause).
 
 **Templates** — Embedded in the binary via `go:embed`, read-only:
 - `templates/meta-snapshot.md` — instructions for snapshot script generation
 - `templates/meta-champion.md` — instructions for champion init
-- `templates/meta-brand.md` — instructions for brand init (character, voice, edge-case behavior)
+- `templates/meta-brand.md` — instructions for brand init (voice-axis: character, edge-case behavior)
+- `templates/meta-ambition.md` — instructions for ambition init (destination-axis: where the project is going, what winning looks like)
 - `templates/meta-builder.md` — instructions for builder init
 - `templates/meta-verifier.md` — instructions for verifier init
 - `templates/values-manifesto.md` — design intent, spliced into `meta-champion.md` via `{{VALUES_MANIFESTO}}`
@@ -87,8 +89,12 @@ templates/
   champion.md                —   Champion's playbook (stakeholder map, tensions, output format)
   builder.md                 —   Builder behavioral instructions
   verifier.md                —   Verifier behavioral instructions
-.lathe/brand.md              — Project character. Reference doc loaded into every runtime
-                               prompt as a tint (not a loop agent — no runtime step)
+.lathe/brand.md              — Project voice (how it speaks). Reference doc loaded into every
+                               runtime prompt as a tint (not a loop agent — no runtime step)
+.lathe/ambition.md           — Project destination (where it's going, what winning looks like).
+                               Reference doc loaded into every runtime prompt as a tint. Runs
+                               on a different axis from brand: voice is present tense, ambition
+                               is future tense. Both are needed.
 .lathe/alignment-summary.md  — Plain-English summary of alignment decisions (human-facing)
 .lathe/snapshot.sh           — Project state collection script
 .lathe/skills/*.md           — Project-specific knowledge

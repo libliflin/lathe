@@ -156,9 +156,9 @@ func cmdInit(args []string) {
 			targetAgent = "champion"
 		}
 		switch targetAgent {
-		case "snapshot", "champion", "brand", "builder", "verifier":
+		case "snapshot", "champion", "brand", "ambition", "builder", "verifier":
 		default:
-			die("Unknown agent role: %s (expected: snapshot, champion, brand, builder, verifier)", targetAgent)
+			die("Unknown agent role: %s (expected: snapshot, champion, brand, ambition, builder, verifier)", targetAgent)
 		}
 	}
 
@@ -178,15 +178,15 @@ func cmdInit(args []string) {
 			// Ensure snapshot.sh is executable
 			os.Chmod(filepath.Join(latheDir, "snapshot.sh"), 0755)
 			fmt.Printf("  Updated: %s/snapshot.sh\n", latheDir)
-		} else if targetAgent == "brand" {
-			// Brand is a reference doc, not a loop agent — lives at .lathe/ root.
-			fmt.Printf("  Updated: %s/brand.md\n", latheDir)
+		} else if targetAgent == "brand" || targetAgent == "ambition" {
+			// Reference docs, not loop agents — live at .lathe/ root.
+			fmt.Printf("  Updated: %s/%s.md\n", latheDir, targetAgent)
 		} else {
 			fmt.Printf("  Updated: %s/%s.md\n", latheAgents, targetAgent)
 		}
 		fmt.Println()
 		fmt.Println("  Note: downstream agents may need re-init too.")
-		fmt.Println("  (snapshot → champion → brand → builder → verifier)")
+		fmt.Println("  (snapshot → champion → brand → ambition → builder → verifier)")
 		return
 	}
 
@@ -213,9 +213,10 @@ func cmdInit(args []string) {
 	os.MkdirAll(filepath.Join(latheDir, "skills"), 0755)
 	os.MkdirAll(filepath.Join(latheDir, "refs"), 0755)
 
-	// Generate snapshot + four agent roles in sequence.
-	// Ordering matters: brand reads champion.md's stakeholder map; builder and verifier read brand.md.
-	roles := []string{"snapshot", "champion", "brand", "builder", "verifier"}
+	// Generate snapshot + reference docs + three loop roles in sequence.
+	// Ordering matters: brand and ambition read champion.md's stakeholder map;
+	// builder and verifier read both brand.md and ambition.md.
+	roles := []string{"snapshot", "champion", "brand", "ambition", "builder", "verifier"}
 	for _, role := range roles {
 		if err := generateAgentRole(role, tool, interactive); err != nil {
 			fmt.Println()
@@ -275,16 +276,17 @@ func cmdInit(args []string) {
 	installSkill()
 
 	if reinit {
-		fmt.Println("  Updated: agents/{champion,brand,builder,verifier}.md, snapshot.sh, skills")
+		fmt.Println("  Updated: agents/{champion,builder,verifier}.md, brand.md, ambition.md, snapshot.sh, skills")
 	} else {
 		fmt.Printf("  Created: %s/\n", latheDir)
 	}
-	fmt.Printf("  Champion: %s/champion.md\n", latheAgents)
-	fmt.Printf("  Brand:    %s/brand.md\n", latheDir)
-	fmt.Printf("  Builder:  %s/builder.md\n", latheAgents)
-	fmt.Printf("  Verify:   %s/verifier.md\n", latheAgents)
-	fmt.Printf("  Skills:   %s/\n", latheSkills)
-	fmt.Printf("  Snap:     %s/snapshot.sh\n", latheDir)
+	fmt.Printf("  Champion:  %s/champion.md\n", latheAgents)
+	fmt.Printf("  Brand:     %s/brand.md\n", latheDir)
+	fmt.Printf("  Ambition:  %s/ambition.md\n", latheDir)
+	fmt.Printf("  Builder:   %s/builder.md\n", latheAgents)
+	fmt.Printf("  Verify:    %s/verifier.md\n", latheAgents)
+	fmt.Printf("  Skills:    %s/\n", latheSkills)
+	fmt.Printf("  Snap:      %s/snapshot.sh\n", latheDir)
 
 	if _, err := os.Stat(filepath.Join(latheDir, "alignment-summary.md")); err == nil {
 		fmt.Println()

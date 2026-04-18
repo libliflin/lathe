@@ -39,11 +39,21 @@ func assembleCommon() string {
 		}
 	}
 
-	// Brand — project character, read by champion and builder as a tint on decisions.
-	// Lives at .lathe/brand.md (not under agents/) because it's a reference doc loaded
-	// into every prompt, not a role that runs in the loop.
+	// Brand — project character (voice, texture). Loaded as a tint on decisions.
+	// Lives at .lathe/brand.md (not under agents/) because it's a reference doc
+	// loaded into every prompt, not a role that runs in the loop.
 	if data, err := os.ReadFile(filepath.Join(latheDir, "brand.md")); err == nil {
 		b.WriteString("---\n# Brand\n\n")
+		b.Write(data)
+		b.WriteString("\n\n")
+	}
+
+	// Ambition — project destination (where it's going, what winning looks like).
+	// Runs on a different axis from brand: brand is voice (present tense), ambition
+	// is destination (future tense). Both loaded every cycle as tints. Lives at
+	// .lathe/ambition.md for the same reason brand does — reference, not loop role.
+	if data, err := os.ReadFile(filepath.Join(latheDir, "ambition.md")); err == nil {
+		b.WriteString("---\n# Ambition\n\n")
 		b.Write(data)
 		b.WriteString("\n\n")
 	}
