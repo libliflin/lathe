@@ -21,7 +21,7 @@ var (
 	sessionFile  string
 
 	ciWaitTimeout    = 300   // seconds
-	roundsPerCycle   = 4
+	roundsPerCycle   = 20    // oscillation cap — a dialog that hasn't converged by 20 rounds needs human review
 	maxSnapshotChars = 6000 // truncate snapshot — tight cap pressures crisp snapshots
 )
 

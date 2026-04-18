@@ -194,13 +194,13 @@ func engineRun(args []string) {
 
 		if err := runCycle(cycle, tool); err != nil {
 			if errors.Is(err, errMaxRounds) {
-				// Oscillation cap = "the dialog got stuck." Hand to the next cycle's
-				// goal-setter rather than exiting — goal-setter sees the stuck PRs
-				// via stale-prs.txt and can pick a new angle or close what's stuck.
-				log("Oscillation cap reached — handing to next goal-setter cycle.")
-			} else {
-				log("Cycle %d error: %v", cycle, err)
+				// Oscillation cap = the dialog couldn't converge in 20 rounds.
+				// That needs human judgment — stop the engine, leave error.md
+				// for the user (or their Claude Code agent) to diagnose and unstick.
+				log("Entered error state — session stopped. See .lathe/session/error.md")
+				return
 			}
+			log("Cycle %d error: %v", cycle, err)
 		}
 
 		cycle++
@@ -266,11 +266,22 @@ func engineStatus(args []string) {
 	}
 	fmt.Printf("=== Lathe: %s ===\n", projectName)
 
+	errorFile := filepath.Join(latheSession, "error.md")
+	inError := false
+	if _, err := os.Stat(errorFile); err == nil {
+		inError = true
+	}
+
 	if isRunning() {
 		data, _ := os.ReadFile(pidFile)
 		fmt.Printf("  Running — PID %s\n", strings.TrimSpace(string(data)))
 	} else if _, err := os.Stat(sessionFile); os.IsNotExist(err) {
 		fmt.Println("  No active session. Run 'lathe start' to begin.")
+	} else if inError {
+		fmt.Println("  ** ERROR STATE — session halted for human review **")
+		fmt.Printf("  Details: %s\n", errorFile)
+		fmt.Println("  Action: open Claude Code in this project and ask it to read error.md and help unstick.")
+		fmt.Println("  When resolved, `lathe start` to resume.")
 	} else {
 		fmt.Println("  Stopped (session state exists — may need 'lathe stop' to clean up)")
 	}

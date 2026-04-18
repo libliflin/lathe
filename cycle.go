@@ -96,8 +96,10 @@ func runCycle(cycle int, tool string) error {
 			}
 			log("%s — dialog continues (round %d/%d) ...", who, round+1, roundsPerCycle)
 		} else {
-			log("Oscillation cap reached (%d rounds). Handing dialog to next goal-setter.", roundsPerCycle)
-			setCycle(cycle, "oscillated")
+			log("Oscillation cap reached (%d rounds) — entering error state for human review.", roundsPerCycle)
+			writeErrorState(cycle, round, "oscillation-cap",
+				fmt.Sprintf("Builder and verifier did not converge after %d rounds of dialog. Both kept contributing without reaching a stable state.", roundsPerCycle))
+			setCycle(cycle, "error")
 			return errMaxRounds
 		}
 	}
@@ -112,6 +114,49 @@ func getBaseBranch() string {
 		return s.BaseBranch
 	}
 	return "main"
+}
+
+// writeErrorState captures everything a human (or a Claude Code session) needs
+// to diagnose and unstick a lathe that couldn't converge. Written to
+// .lathe/session/error.md, read by `lathe status` afterwards.
+func writeErrorState(cycle, round int, kind, detail string) {
+	var b strings.Builder
+
+	fmt.Fprintf(&b, "# Lathe Error State\n\n")
+	fmt.Fprintf(&b, "**When:** %s\n", time.Now().Format("2006-01-02 15:04:05"))
+	fmt.Fprintf(&b, "**Cycle:** %d, Round: %d\n", cycle, round)
+	fmt.Fprintf(&b, "**Kind:** %s\n\n", kind)
+	fmt.Fprintf(&b, "## What happened\n\n%s\n\n", detail)
+
+	latestGoal := filepath.Join(goalHistory, fmt.Sprintf("cycle-%03d.md", cycle))
+	if data, err := os.ReadFile(latestGoal); err == nil {
+		b.WriteString("## Goal of the stuck cycle\n\n")
+		b.Write(data)
+		b.WriteString("\n\n")
+	}
+
+	changelog := filepath.Join(latheSession, "changelog.md")
+	if data, err := os.ReadFile(changelog); err == nil {
+		b.WriteString("## Last round's changelog\n\n")
+		b.Write(data)
+		b.WriteString("\n\n")
+	}
+
+	stalePRs := filepath.Join(latheSession, "stale-prs.txt")
+	if data, err := os.ReadFile(stalePRs); err == nil {
+		b.Write(data)
+		b.WriteString("\n\n")
+	}
+
+	b.WriteString("## What to do from here\n\n")
+	b.WriteString("Open Claude Code in this project directory and ask it to investigate. Tell it to read this file and the stale-prs.txt context.\n\n")
+	b.WriteString("Typical resolutions:\n")
+	b.WriteString("- **PRs going in circles**: close them (`gh pr close <N> --delete-branch`). The next cycle's goal-setter will pick a new angle.\n")
+	b.WriteString("- **Goal was malformed**: close the related PRs; lathe's next cycle will pick a fresh goal.\n")
+	b.WriteString("- **Real blocker** (a dep conflict, a flaky test, a credential issue): fix it in the repo, then restart.\n\n")
+	b.WriteString("When you've resolved things: `lathe start` to resume. `preStartCleanup` will merge any greens that appeared, leave the rest for the new session's agents to see.\n")
+
+	_ = os.WriteFile(filepath.Join(latheSession, "error.md"), []byte(b.String()), 0644)
 }
 
 // getHead returns the SHA of the given branch locally, or "" if unknown.
