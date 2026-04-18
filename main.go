@@ -13,6 +13,7 @@ import (
 // Global paths — set once in main, used everywhere.
 var (
 	latheDir         = ".lathe"
+	latheAgents      string
 	latheSession     string
 	latheHistory     string
 	championHistory  string
@@ -26,6 +27,7 @@ var (
 )
 
 func initPaths() {
+	latheAgents = filepath.Join(latheDir, "agents")
 	latheSession = filepath.Join(latheDir, "session")
 	latheHistory = filepath.Join(latheSession, "history")
 	championHistory = filepath.Join(latheSession, "champion-history")
@@ -94,14 +96,25 @@ func ensureInitialized() {
 	if _, err := os.Stat(latheDir); os.IsNotExist(err) {
 		die("Not a lathe project. Run 'lathe init' first.")
 	}
-	// Legacy projects may have .lathe/goal.md instead of .lathe/champion.md.
-	// Accept either during the transition; preStartCleanup handles the rename.
-	championPath := filepath.Join(latheDir, "champion.md")
-	legacyGoalPath := filepath.Join(latheDir, "goal.md")
-	if _, err := os.Stat(championPath); os.IsNotExist(err) {
-		if _, legacyErr := os.Stat(legacyGoalPath); os.IsNotExist(legacyErr) {
-			die("Missing %s/champion.md. Run 'lathe init' first.", latheDir)
+	// Accept any of three possible locations for the champion's playbook during the transition:
+	// 1. .lathe/agents/champion.md (current)
+	// 2. .lathe/champion.md (previous refactor, pre-agents/ move)
+	// 3. .lathe/goal.md (original name)
+	// preStartCleanup handles the migration forward.
+	candidates := []string{
+		filepath.Join(latheAgents, "champion.md"),
+		filepath.Join(latheDir, "champion.md"),
+		filepath.Join(latheDir, "goal.md"),
+	}
+	found := false
+	for _, p := range candidates {
+		if _, err := os.Stat(p); err == nil {
+			found = true
+			break
 		}
+	}
+	if !found {
+		die("Missing %s/agents/champion.md. Run 'lathe init' first.", latheDir)
 	}
 	if _, err := os.Stat(filepath.Join(latheDir, "snapshot.sh")); os.IsNotExist(err) {
 		die("Missing %s/snapshot.sh. Run 'lathe init' first.", latheDir)

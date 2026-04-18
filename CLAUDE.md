@@ -19,10 +19,10 @@ Single Go binary with all templates embedded via `go:embed`. Builds for all plat
 
 **`lathe init`** — The alignment step. Runs five sequential AI calls:
 1. `meta-snapshot.md` → `.lathe/snapshot.sh` — project-specific state collection script. The agent reads the project and writes a snapshot tailored to its build/test/lint tools.
-2. `meta-champion.md` → `.lathe/champion.md` — the champion's playbook: stakeholder map, tensions, emotional signals, how to rank, the per-cycle output format. Values manifesto spliced in.
-3. `meta-brand.md` → `.lathe/brand.md` — the project's character, cited from real signals (errors, README, CLI output). Loaded into every runtime prompt as a tint on decisions.
-4. `meta-builder.md` → `.lathe/builder.md` — implementation quality (creative/synthesis posture), CI/PR workflow. Reads champion.md for alignment.
-5. `meta-verifier.md` → `.lathe/verifier.md` — comparative/scrutinizing posture, the shape-specific verification playbook. Reads builder.md for failure modes.
+2. `meta-champion.md` → `.lathe/agents/champion.md` — the champion's playbook: stakeholder map, tensions, emotional signals, how to rank, the per-cycle output format. Values manifesto spliced in.
+3. `meta-brand.md` → `.lathe/agents/brand.md` — the project's character, cited from real signals (errors, README, CLI output). Loaded into every runtime prompt as a tint on decisions.
+4. `meta-builder.md` → `.lathe/agents/builder.md` — implementation quality (creative/synthesis posture), CI/PR workflow. Reads champion.md for alignment.
+5. `meta-verifier.md` → `.lathe/agents/verifier.md` — comparative/scrutinizing posture, the shape-specific verification playbook. Reads builder.md for failure modes.
 
 Use `--agent=snapshot`, `--agent=champion`, `--agent=brand`, `--agent=builder`, or `--agent=verifier` to re-init just one role without touching the others. `--agent=goal` is accepted as an alias for `--agent=champion` during the transition.
 
@@ -34,7 +34,7 @@ Use `--agent=snapshot`, `--agent=champion`, `--agent=brand`, `--agent=builder`, 
 - `templates/meta-brand.md` — instructions for brand init (character, voice, edge-case behavior)
 - `templates/meta-builder.md` — instructions for builder init
 - `templates/meta-verifier.md` — instructions for verifier init
-- `templates/values-manifesto.md` — design intent, spliced into meta-champion.md via {{VALUES_MANIFESTO}}
+- `templates/values-manifesto.md` — design intent, spliced into `meta-champion.md` via `{{VALUES_MANIFESTO}}`
 - `templates/interactive-preamble.md` — additional instructions for `--interactive` mode
 
 ## Key Principle
@@ -47,8 +47,8 @@ Use `--agent=snapshot`, `--agent=champion`, `--agent=brand`, `--agent=builder`, 
 main.go                          — CLI entrypoint, path setup
 init.go                          — lathe init (generates agent docs, spinner, rate limit retry)
 engine.go                        — lathe start/stop/status/logs (background process)
-cycle.go                         — Cycle loop (goal + adaptive builder/verifier with verdict)
-agent.go                         — Goal-setter, builder, verifier prompt assembly
+cycle.go                         — Cycle loop (champion + builder/verifier dialog + convergence)
+agent.go                         — Champion, builder, verifier prompt assembly
 invoke.go                        — Agent invocation, rate limit detection and sleep
 update.go                        — Self-updater (checks GitHub Releases)
 prompt.go                        — Shared prompt helpers (skills, refs, snapshot, session context)
@@ -72,7 +72,7 @@ templates/
   meta-brand.md                  — Instructions for brand init (project character)
   meta-builder.md                — Instructions for builder init
   meta-verifier.md               — Instructions for verifier init
-  values-manifesto.md            — Design intent, spliced into meta-goal.md
+  values-manifesto.md            — Design intent, spliced into meta-champion.md
   interactive-preamble.md        — Interactive mode behavior
   skill/
     SKILL.md                     — Global Claude Code skill, installed to ~/.claude/skills/lathe/
@@ -83,11 +83,11 @@ templates/
 **Config** — written by `lathe init`, survives stop, committed by the user:
 
 ```
-.lathe/champion.md           — Champion's playbook (stakeholder map, tensions, output format)
-.lathe/brand.md              — Project character (voice, edge-case behavior). Loaded into every runtime prompt.
-.lathe/builder.md            — Builder behavioral instructions
-.lathe/verifier.md           — Verifier behavioral instructions
-.lathe/alignment-summary.md  — Plain-English summary of alignment decisions
+.lathe/agents/champion.md    — Champion's playbook (stakeholder map, tensions, output format)
+.lathe/agents/brand.md       — Project character (voice, edge-case behavior). Loaded into every runtime prompt.
+.lathe/agents/builder.md     — Builder behavioral instructions
+.lathe/agents/verifier.md    — Verifier behavioral instructions
+.lathe/alignment-summary.md  — Plain-English summary of alignment decisions (human-facing)
 .lathe/snapshot.sh           — Project state collection script
 .lathe/skills/*.md           — Project-specific knowledge
 .lathe/refs/*.md             — User-curated reference material
@@ -130,4 +130,4 @@ History lives inside `session/` (gitignored). The real audit trail is the squash
 - The stale-PR sweep (`resolveStalePRs`) merges any lathe PR whose CI has turned green and writes `session/stale-prs.txt` (with failure logs + handling instructions) for the ones still failing or pending. `lathe start` runs a one-shot version of this sweep (`preStartCleanup`) to inherit work from prior sessions.
 - Step branching: if the session's PR is still open at step start (previous step's CI didn't merge in time), the next step continues on the same branch. A single goal's rounds of dialog share one PR when CI is slow — on merge, the full arc squashes into one commit. At cycle boundaries, `runCycle` clears the session PR so each new goal always cuts fresh.
 - No VERDICT binary. The champion runs first (one report per cycle), then the builder and verifier have a dialog with distinct lenses (creative synthesis / comparative scrutiny). Each round they contribute code or stand down plainly in the changelog. The engine reads convergence from `git rev-parse <base_branch>` before and after each step — no commit means no contribution. A round with neither contributing is convergence.
-- The champion writes to `.lathe/session/changelog.md` (ephemeral, archived as `champion-history/cycle-NNN.md`). Its reference playbook lives at `.lathe/champion.md` and is read-only at runtime. Keeping these paths distinctly named prevents the agent from overwriting its own playbook.
+- The champion writes to `.lathe/session/changelog.md` (ephemeral, archived as `champion-history/cycle-NNN.md`). Its reference playbook lives at `.lathe/agents/champion.md` and is read-only at runtime. Keeping these paths distinctly named prevents the agent from overwriting its own playbook.

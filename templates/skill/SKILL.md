@@ -17,15 +17,16 @@ If your project has a `.lathe/` directory, lathe has been initialized on it. Her
 
 ```
 .lathe/
-  champion.md           — The champion's playbook (formerly goal.md). Stakeholder map,
-                          tensions, emotional signals, how to rank, the output format.
-                          This is the "values brain" of the system. READ THIS to understand
-                          what lathe is optimizing for.
-  brand.md              — The project's character (how it speaks). Loaded into every
+  agents/               — The four agent docs live here (moved from .lathe/ root)
+    champion.md         — The champion's playbook. Stakeholder map, tensions, emotional
+                          signals, how to rank, the output format. This is the "values
+                          brain" of the system. READ THIS to understand what lathe is
+                          optimizing for.
+    brand.md            — The project's character (how it speaks). Loaded into every
                           runtime prompt as a tint on decisions.
-  builder.md            — Builder instructions. Creative/synthesis posture, implementation
+    builder.md          — Builder instructions. Creative/synthesis posture, implementation
                           quality, CI/PR workflow, project-specific conventions.
-  verifier.md           — Verifier instructions. Comparative/scrutinizing posture, the
+    verifier.md         — Verifier instructions. Comparative/scrutinizing posture, the
                           verification playbook adapted to the project's shape.
   skills/*.md           — Project-specific knowledge (testing conventions, architecture,
                           stakeholder journeys).

@@ -163,7 +163,7 @@ func waitForCIDirect() {
 // tracking them. Agents running `git add -A` would then ship session/changelog.md
 // churn as real commits on every round. We detect + untrack here.
 func preStartCleanup() {
-	migrateLegacyGoalMd()
+	migrateLegacyAgentLayout()
 	selfHealSessionTracking()
 
 	out, err := runCapture("gh", "pr", "list",
@@ -221,21 +221,48 @@ func preStartCleanup() {
 	fmt.Println()
 }
 
-// migrateLegacyGoalMd renames .lathe/goal.md to .lathe/champion.md when found.
-// Projects initialized before the champion rename have goal.md; the runtime now
-// reads champion.md. Silent no-op when the rename isn't needed.
-func migrateLegacyGoalMd() {
-	legacy := filepath.Join(latheDir, "goal.md")
-	target := filepath.Join(latheDir, "champion.md")
-	if _, err := os.Stat(legacy); err != nil {
-		return
+// migrateLegacyAgentLayout migrates agent docs to their current home: .lathe/agents/.
+// Handles two legacy layouts:
+//  1. .lathe/goal.md              → .lathe/agents/champion.md  (name + location)
+//  2. .lathe/<role>.md at root    → .lathe/agents/<role>.md    (location only)
+// Silent no-op when no migration is needed.
+func migrateLegacyAgentLayout() {
+	_ = os.MkdirAll(latheAgents, 0755)
+
+	migrated := []string{}
+
+	// Step 1: goal.md (original name) → agents/champion.md
+	legacyGoal := filepath.Join(latheDir, "goal.md")
+	championTarget := filepath.Join(latheAgents, "champion.md")
+	if _, err := os.Stat(legacyGoal); err == nil {
+		if _, err := os.Stat(championTarget); os.IsNotExist(err) {
+			if err := os.Rename(legacyGoal, championTarget); err == nil {
+				migrated = append(migrated, "goal.md → agents/champion.md")
+			}
+		}
 	}
-	if _, err := os.Stat(target); err == nil {
-		return // both exist — something unusual; leave it for the user
+
+	// Step 2: .lathe/<role>.md at root → .lathe/agents/<role>.md
+	for _, name := range []string{"champion.md", "brand.md", "builder.md", "verifier.md"} {
+		src := filepath.Join(latheDir, name)
+		dst := filepath.Join(latheAgents, name)
+		if _, err := os.Stat(src); err != nil {
+			continue
+		}
+		if _, err := os.Stat(dst); err == nil {
+			continue // already in new location
+		}
+		if err := os.Rename(src, dst); err == nil {
+			migrated = append(migrated, name+" → agents/"+name)
+		}
 	}
-	if err := os.Rename(legacy, target); err == nil {
+
+	if len(migrated) > 0 {
 		fmt.Println()
-		fmt.Printf("  Migrated %s/goal.md → %s/champion.md (role renamed in engine).\n", latheDir, latheDir)
+		fmt.Println("  Migrated agent docs into .lathe/agents/:")
+		for _, m := range migrated {
+			fmt.Println("    " + m)
+		}
 		fmt.Println("  Commit the rename to land it in main.")
 	}
 }

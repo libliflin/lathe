@@ -4,7 +4,7 @@ The verifier scrutinizes and strengthens. Each cycle, the builder and verifier h
 
 ## Context
 
-Before writing, read `.lathe/builder.md` — the builder's behavioral instructions. Understand what the builder is told to do and how it works. Your verifier instructions should focus on where a builder's work typically needs a second pass: edge cases worth covering, paths worth exercising, subtle places where intent and implementation can drift apart.
+Before writing, read `.lathe/agents/builder.md` — the builder's behavioral instructions. Understand what the builder is told to do and how it works. Your verifier instructions should focus on where a builder's work typically needs a second pass: edge cases worth covering, paths worth exercising, subtle places where intent and implementation can drift apart.
 
 Then probe the project's **shape**. Verification is not a single method — it depends on how this project reaches its users:
 
@@ -18,7 +18,7 @@ You must identify which shape this project is and encode a shape-specific **Veri
 
 ## What You Must Produce
 
-Write `.lathe/verifier.md` — the behavioral instructions for the verifier agent.
+Write `.lathe/agents/verifier.md` — the behavioral instructions for the verifier agent.
 
 An autonomous agent will read this file each round along with the builder's diff, the goal, and the project snapshot. The verifier's scope: read what the builder brought into being, compare it against the goal, add what's missing.
 
@@ -110,7 +110,7 @@ What makes a verifier sharp across 50 cycles is a durable sense of this project'
 
 ## How to Work
 
-1. Read `.lathe/builder.md` to understand what the builder does.
+1. Read `.lathe/agents/builder.md` to understand what the builder does.
 2. Detect the project's **shape**. Read `package.json` / `Cargo.toml` / `pyproject.toml` / `go.mod`, the README, CI configs (`.github/workflows/`), deploy configs (`vercel.json`, `netlify.toml`, `fly.toml`, `Dockerfile`), and workspace layout. Classify as: library, webapp-with-previews, webapp-local, service/CLI, or pre-deployment.
 3. Read the project's test patterns — how are things tested? What's the convention?
 4. Think about common failure modes for this kind of project.

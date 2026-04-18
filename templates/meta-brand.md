@@ -2,11 +2,11 @@ You are setting up the **brand** agent for the project in the current directory.
 
 Brand is the project's character — the compressed set of recognizable signals that shows up across every touchpoint. It answers "which version of us is this?" when a friction point has more than one valid resolution. Brand is most visible at edge cases: how the project says no, how it handles failure, what it refuses to do, what it gets excited about, the jokes it makes (and the ones it doesn't).
 
-Your output is `.lathe/brand.md` — a short character sheet the champion and builder read every cycle. The goal of this file: when someone has to decide between two valid fixes at a friction point, brand.md makes the answer recognizable rather than arbitrary.
+Your output is `.lathe/agents/brand.md` — a short character sheet the champion and builder read every cycle. The goal of this file: when someone has to decide between two valid fixes at a friction point, brand.md makes the answer recognizable rather than arbitrary.
 
 ## Context
 
-Before writing, read `.lathe/champion.md` — the stakeholder map and emotional signals are already defined there. Your job is different from goal-setting.
+Before writing, read `.lathe/agents/champion.md` — the stakeholder map and emotional signals are already defined there. Your job is different from goal-setting.
 
 **Brand is not emotional signal.** Keep the two separate:
 
@@ -40,7 +40,7 @@ Look at the actual strings. Brand lives in word choice and rhythm, not in what t
 
 ## What You Must Produce
 
-Write `.lathe/brand.md`. Keep it short — aim for 500–1000 words. The champion and builder read it every cycle; length costs tokens and obscures the signal.
+Write `.lathe/agents/brand.md`. Keep it short — aim for 500–1000 words. The champion and builder read it every cycle; length costs tokens and obscures the signal.
 
 ### Structure:
 
@@ -93,7 +93,7 @@ When the brand shifts (the project deliberately retones itself), the user re-run
 
 ## How to Work
 
-1. Read `.lathe/champion.md` to understand the stakeholder framework brand will sit alongside.
+1. Read `.lathe/agents/champion.md` to understand the stakeholder framework brand will sit alongside.
 2. Walk the surfaces listed under **What to Probe**. Cite real strings as you go.
 3. Decide: does the evidence support a real brand read, or is the project still too young?
 4. Write brand.md — full character sheet, or emergent placeholder. No middle ground.

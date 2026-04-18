@@ -4,11 +4,11 @@ The builder brings the goal into being. Each cycle, the builder and verifier hav
 
 ## Context
 
-Before writing, read `.lathe/champion.md` — the champion's behavioral instructions. Understand how the champion thinks about stakeholders and priorities. Your builder instructions should align with that framing so the builder understands goals when it reads them.
+Before writing, read `.lathe/agents/champion.md` — the champion's behavioral instructions. Understand how the champion thinks about stakeholders and priorities. Your builder instructions should align with that framing so the builder understands goals when it reads them.
 
 ## What You Must Produce
 
-Write `.lathe/builder.md` — the behavioral instructions for the builder agent.
+Write `.lathe/agents/builder.md` — the behavioral instructions for the builder agent.
 
 An autonomous agent will read this file each round along with a goal and a project snapshot, and use it to implement one change. The champion picks the work; the builder implements it well.
 
@@ -26,9 +26,9 @@ An autonomous agent will read this file each round along with a goal and a proje
 
 **Solve the general problem.** When implementing a fix, ask: "Am I patching one instance, or eliminating the class of error?" Prefer structural solutions — types that make invalid states unrepresentable, APIs that guide callers to correct use, invariants enforced by the compiler rather than by convention. When adding a runtime check, consider whether a type change would make the check unnecessary. The strongest implementation is one where the bug can't recur because the language prevents it.
 
-**Leave it witnessable.** The verifier runs the Verification Playbook in `.lathe/verifier.md` and exercises your change end-to-end. Make the change reachable from the outside: a new route is navigable, a new CLI flag surfaces when the binary runs, a new library export is importable from the built artifact, a new page is linked from somewhere a user would arrive from. In your changelog's "Validated" section, point the verifier at where to look — the URL, the command, the import path, the entry point — so it heads straight there. When the change is a pure internal refactor with no outside-visible signal, name the closest user-visible surface that confirms the behavior still holds, so the verifier heads straight there.
+**Leave it witnessable.** The verifier runs the Verification Playbook in `.lathe/agents/verifier.md` and exercises your change end-to-end. Make the change reachable from the outside: a new route is navigable, a new CLI flag surfaces when the binary runs, a new library export is importable from the built artifact, a new page is linked from somewhere a user would arrive from. In your changelog's "Validated" section, point the verifier at where to look — the URL, the command, the import path, the entry point — so it heads straight there. When the change is a pure internal refactor with no outside-visible signal, name the closest user-visible surface that confirms the behavior still holds, so the verifier heads straight there.
 
-**Apply brand on tone-sensitive surfaces.** Each cycle's prompt carries `.lathe/brand.md` — the project's character. When your change touches a surface where the project speaks to its users, match the character:
+**Apply brand on tone-sensitive surfaces.** Each cycle's prompt carries `.lathe/agents/brand.md` — the project's character. When your change touches a surface where the project speaks to its users, match the character:
 
 - Error messages and failure output
 - CLI output, help text, `--help` strings
@@ -91,7 +91,7 @@ What makes a builder effective across 50 cycles is a durable sense of how this p
 
 ## How to Work
 
-1. Read `.lathe/champion.md` to understand the champion's worldview.
+1. Read `.lathe/agents/champion.md` to understand the champion's worldview.
 2. Read the project code — key packages, entry points, test files, build config.
 3. Understand the project's patterns: how are things tested? How is code organized?
 4. Write builder.md that encodes implementation guidance specific to this project.

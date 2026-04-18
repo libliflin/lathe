@@ -14,7 +14,7 @@ func runChampion(cycle int, tool string) error {
 	var b strings.Builder
 
 	// Champion's playbook (stable reference doc — read, not written)
-	b.WriteString(readFileOr(filepath.Join(latheDir, "champion.md"), ""))
+	b.WriteString(readFileOr(filepath.Join(latheAgents, "champion.md"), ""))
 	b.WriteString("\n\n")
 
 	// Common: skills, refs, theme, snapshot
@@ -75,7 +75,7 @@ func runBuilder(cycle, round int, tool string) error {
 	var b strings.Builder
 
 	// Builder behavioral doc
-	b.WriteString(readFileOr(filepath.Join(latheDir, "builder.md"), ""))
+	b.WriteString(readFileOr(filepath.Join(latheAgents, "builder.md"), ""))
 	b.WriteString("\n\n")
 
 	// Common: skills, refs, theme, snapshot
@@ -147,7 +147,7 @@ func runVerifier(cycle, round int, tool string) error {
 	var b strings.Builder
 
 	// Verifier behavioral doc
-	b.WriteString(readFileOr(filepath.Join(latheDir, "verifier.md"), ""))
+	b.WriteString(readFileOr(filepath.Join(latheAgents, "verifier.md"), ""))
 	b.WriteString("\n\n")
 
 	// Common: skills, refs, theme, snapshot

@@ -167,6 +167,7 @@ func cmdInit(args []string) {
 		if _, err := os.Stat(latheDir); os.IsNotExist(err) {
 			die(".lathe/ not found — run 'lathe init' first (without --agent)")
 		}
+		os.MkdirAll(latheAgents, 0755)
 		fmt.Printf("  Re-initializing %s agent only.\n\n", targetAgent)
 
 		if err := generateAgentRole(targetAgent, tool, interactive); err != nil {
@@ -178,7 +179,7 @@ func cmdInit(args []string) {
 			os.Chmod(filepath.Join(latheDir, "snapshot.sh"), 0755)
 			fmt.Printf("  Updated: %s/snapshot.sh\n", latheDir)
 		} else {
-			fmt.Printf("  Updated: %s/%s.md\n", latheDir, targetAgent)
+			fmt.Printf("  Updated: %s/%s.md\n", latheAgents, targetAgent)
 		}
 		fmt.Println()
 		fmt.Println("  Note: downstream agents may need re-init too.")
@@ -205,6 +206,7 @@ func cmdInit(args []string) {
 	}
 	fmt.Println()
 
+	os.MkdirAll(latheAgents, 0755)
 	os.MkdirAll(filepath.Join(latheDir, "skills"), 0755)
 	os.MkdirAll(filepath.Join(latheDir, "refs"), 0755)
 
@@ -242,16 +244,23 @@ func cmdInit(args []string) {
 	os.Chmod(filepath.Join(latheDir, "snapshot.sh"), 0755)
 
 	// Validate
-	for _, required := range []string{"snapshot.sh", "champion.md"} {
-		if _, err := os.Stat(filepath.Join(latheDir, required)); os.IsNotExist(err) {
-			fmt.Println()
-			fmt.Printf("  ERROR: Agent generation produced unusable output.\n")
-			fmt.Printf("  Missing: %s/%s\n", latheDir, required)
-			if !reinit {
-				os.RemoveAll(latheDir)
-			}
-			os.Exit(1)
+	if _, err := os.Stat(filepath.Join(latheDir, "snapshot.sh")); os.IsNotExist(err) {
+		fmt.Println()
+		fmt.Printf("  ERROR: Agent generation produced unusable output.\n")
+		fmt.Printf("  Missing: %s/snapshot.sh\n", latheDir)
+		if !reinit {
+			os.RemoveAll(latheDir)
 		}
+		os.Exit(1)
+	}
+	if _, err := os.Stat(filepath.Join(latheAgents, "champion.md")); os.IsNotExist(err) {
+		fmt.Println()
+		fmt.Printf("  ERROR: Agent generation produced unusable output.\n")
+		fmt.Printf("  Missing: %s/champion.md\n", latheAgents)
+		if !reinit {
+			os.RemoveAll(latheDir)
+		}
+		os.Exit(1)
 	}
 
 	fmt.Println("  Agents generated via " + tool + ".")
@@ -263,15 +272,15 @@ func cmdInit(args []string) {
 	installSkill()
 
 	if reinit {
-		fmt.Println("  Updated: champion.md, brand.md, builder.md, verifier.md, snapshot.sh, skills")
+		fmt.Println("  Updated: agents/{champion,brand,builder,verifier}.md, snapshot.sh, skills")
 	} else {
 		fmt.Printf("  Created: %s/\n", latheDir)
 	}
-	fmt.Printf("  Champion: %s/champion.md\n", latheDir)
-	fmt.Printf("  Brand:    %s/brand.md\n", latheDir)
-	fmt.Printf("  Builder:  %s/builder.md\n", latheDir)
-	fmt.Printf("  Verify:   %s/verifier.md\n", latheDir)
-	fmt.Printf("  Skills:   %s/skills/\n", latheDir)
+	fmt.Printf("  Champion: %s/champion.md\n", latheAgents)
+	fmt.Printf("  Brand:    %s/brand.md\n", latheAgents)
+	fmt.Printf("  Builder:  %s/builder.md\n", latheAgents)
+	fmt.Printf("  Verify:   %s/verifier.md\n", latheAgents)
+	fmt.Printf("  Skills:   %s/\n", latheSkills)
 	fmt.Printf("  Snap:     %s/snapshot.sh\n", latheDir)
 
 	if _, err := os.Stat(filepath.Join(latheDir, "alignment-summary.md")); err == nil {

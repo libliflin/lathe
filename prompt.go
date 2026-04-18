@@ -39,8 +39,8 @@ func assembleCommon() string {
 		}
 	}
 
-	// Brand — project character, read by goal-setter and builder as a tint on decisions
-	if data, err := os.ReadFile(filepath.Join(latheDir, "brand.md")); err == nil {
+	// Brand — project character, read by champion and builder as a tint on decisions
+	if data, err := os.ReadFile(filepath.Join(latheAgents, "brand.md")); err == nil {
 		b.WriteString("---\n# Brand\n\n")
 		b.Write(data)
 		b.WriteString("\n\n")
