@@ -214,7 +214,11 @@ const $live = document.getElementById('live');
 const $liveLabel = document.getElementById('live-label');
 const $updated = document.getElementById('updated');
 
-let prevState = new Map(); // pid -> lathe
+// Registry of stable card DOM keyed by pid. Values: { el, refs, prevCycle, prevPhase, seenLogKeys }.
+// Cards are created once per pid, then updated field-by-field on each tick. This preserves
+// scroll position inside each log, hover state, text selection, and prevents jank.
+const cards = new Map();
+let grid = null;
 let reconnectAttempts = 0;
 
 function fmtElapsed(sec) {
@@ -241,7 +245,7 @@ function logKind(msg) {
   const m = msg.toLowerCase();
   if (m.includes('error') || m.includes('rate limited') || m.includes('failed')) return 'err';
   if (m.includes('warn') || m.includes('safety net')) return 'warn';
-  if (m.includes('pass') || m.includes('completed') || m.includes('done') || m.includes('merged')) return 'ok';
+  if (m.includes('converged') || m.includes('passed') || m.includes('completed') || m.includes('done') || m.includes('merged')) return 'ok';
   return 'info';
 }
 
@@ -250,165 +254,324 @@ function prUrl(l) {
   return l.repo_url.replace(/\/$/, '') + "/pull/" + l.pr_number;
 }
 
-function escapeHTML(s) {
-  return String(s == null ? '' : s).replace(/[&<>"']/g, c => (
-    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
-  ));
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = text;
+  return e;
 }
 
-function renderCard(l) {
-  const phase = l.phase || 'idle';
-  const stats = l.cycle_stats || { total: 0, pass_one: 0, pass_late: 0, failed: 0, verdicts: [] };
+function createCard(lathe) {
+  const card = el('div', 'card');
+  card.setAttribute('data-pid', lathe.pid);
+
+  // Head
+  const head = el('div', 'card-head');
+  const dot = el('span', 'dot pulse');
+  dot.style.background = 'var(--green)';
+  dot.style.boxShadow = '0 0 8px var(--green)';
+  const project = el('span', 'project');
+  const phase = el('span', 'phase');
+  const spacer = el('span', 'spacer');
+  const rateLimit = el('span', 'rate-limit', 'rate limited');
+  rateLimit.style.display = 'none';
+  head.append(dot, project, phase, spacer, rateLimit);
+
+  // Body (metrics)
+  const body = el('div', 'card-body');
+  const mkMetric = (label) => {
+    const m = el('div', 'metric');
+    m.append(el('span', 'label', label));
+    const v = el('span', 'value big');
+    m.append(v);
+    return { wrap: m, value: v };
+  };
+  const cycle = mkMetric('Cycle');
+  const uptime = mkMetric('Uptime');
+
+  const pass1Wrap = el('div', 'metric');
+  pass1Wrap.append(el('span', 'label', 'Pass@1'));
+  const pass1Val = el('span', 'value');
+  const pass1Sub = el('span', 'sub');
+  pass1Val.append(document.createTextNode('—'), pass1Sub);
+  pass1Wrap.append(pass1Val);
+
+  const verdictsWrap = el('div', 'metric');
+  verdictsWrap.append(el('span', 'label', 'Verdicts'));
+  const verdicts = el('div', 'sparkline');
+  verdictsWrap.append(verdicts);
+
+  body.append(cycle.wrap, uptime.wrap, pass1Wrap, verdictsWrap);
+
+  // Commits section
+  const commitsSection = el('div', 'card-section');
+  commitsSection.append(el('div', 'title', 'Recent Commits'));
+  const commits = el('div', 'commits');
+  commitsSection.append(commits);
+
+  // Log section (stable scroll container — never replaced)
+  const logSection = el('div', 'card-section');
+  logSection.append(el('div', 'title', 'Stream'));
+  const log = el('div', 'log');
+  logSection.append(log);
+
+  // Footer
+  const foot = el('div', 'card-foot');
+
+  card.append(head, body, commitsSection, logSection, foot);
+
+  return {
+    el: card,
+    refs: {
+      project, phase, rateLimit,
+      cycle: cycle.value,
+      uptime: uptime.value,
+      pass1Text: pass1Val.firstChild, // the text node before .sub
+      pass1Sub,
+      verdicts,
+      commits,
+      log,
+      foot,
+    },
+    prevCycle: null,
+    prevPhase: null,
+    seenLogKeys: new Set(),
+  };
+}
+
+function updateCard(entry, lathe) {
+  const r = entry.refs;
+  const stats = lathe.cycle_stats || { total: 0, pass_one: 0, pass_late: 0, failed: 0, verdicts: [] };
   const totalScored = stats.pass_one + stats.pass_late + stats.failed;
   const passOneRate = totalScored > 0 ? Math.round((stats.pass_one / totalScored) * 100) : null;
 
-  const verdicts = (stats.verdicts || [])
-    .map(v => '<span class="' + escapeHTML(v) + '">' + escapeHTML(v) + '</span>')
-    .join('');
+  // Head
+  setText(r.project, lathe.project);
+  setText(r.phase, lathe.phase || 'idle');
+  const cls = 'phase ' + phaseClass(lathe.phase);
+  if (r.phase.className !== cls) r.phase.className = cls;
+  r.rateLimit.style.display = lathe.rate_limited ? '' : 'none';
 
-  const commits = (l.recent_commits || [])
-    .slice(0, 4)
-    .map(c => (
-      '<div class="commit">' +
-        '<span class="sha">' + escapeHTML(c.sha) + '</span>' +
-        '<span class="msg">' + escapeHTML(c.message) + '</span>' +
-        '<span class="time">' + escapeHTML(c.time) + '</span>' +
-      '</div>'
-    ))
-    .join('');
+  // Metrics
+  setText(r.cycle, String(lathe.cycle || 0));
+  setText(r.uptime, fmtElapsed(lathe.elapsed_seconds));
+  r.pass1Text.nodeValue = passOneRate !== null ? passOneRate + '% ' : '— ';
+  setText(r.pass1Sub, stats.pass_one + '/' + (totalScored || 0));
 
-  const logs = (l.recent_logs || [])
-    .slice(-20)
-    .map(line => {
-      const kind = logKind(line.message);
-      return '<div class="line ' + kind + '">' +
-        '<span class="t">' + escapeHTML(line.time) + '</span>' +
-        '<span class="m">' + escapeHTML(line.message) + '</span>' +
-      '</div>';
-    })
-    .join('');
+  // Verdicts sparkline — rebuild (small, cheap, stateless)
+  updateVerdicts(r.verdicts, stats.verdicts || []);
+
+  // Commits — rebuild (short list, changes slowly)
+  updateCommits(r.commits, lathe.recent_commits || []);
+
+  // Log — APPEND new lines only, never replace. This preserves scroll position.
+  updateLog(r.log, lathe.recent_logs || [], entry.seenLogKeys);
+
+  // Footer — rebuild (small, changes rarely)
+  updateFoot(r.foot, lathe);
+
+  // Flash the card only on cycle/phase change (not on every tick)
+  if (entry.prevCycle !== null && (entry.prevCycle !== lathe.cycle || entry.prevPhase !== lathe.phase)) {
+    entry.el.classList.remove('flash');
+    void entry.el.offsetWidth;
+    entry.el.classList.add('flash');
+  }
+  entry.prevCycle = lathe.cycle;
+  entry.prevPhase = lathe.phase;
+}
+
+function setText(node, text) {
+  text = text == null ? '' : String(text);
+  if (node.textContent !== text) node.textContent = text;
+}
+
+function updateVerdicts(container, verdicts) {
+  // cheap rebuild — small list, class depends on content
+  while (container.firstChild) container.removeChild(container.firstChild);
+  if (!verdicts.length) {
+    const dash = el('span', null, '—');
+    dash.style.color = 'var(--muted)';
+    dash.style.border = 'none';
+    container.append(dash);
+    return;
+  }
+  for (const v of verdicts) {
+    container.append(el('span', v, v));
+  }
+}
+
+function updateCommits(container, commits) {
+  while (container.firstChild) container.removeChild(container.firstChild);
+  if (!commits.length) {
+    const p = el('span', null, 'no commits yet');
+    p.style.color = 'var(--muted)';
+    p.style.fontSize = '11px';
+    container.append(p);
+    return;
+  }
+  for (const c of commits.slice(0, 4)) {
+    const row = el('div', 'commit');
+    row.append(
+      el('span', 'sha', c.sha),
+      el('span', 'msg', c.message),
+      el('span', 'time', c.time)
+    );
+    container.append(row);
+  }
+}
+
+function updateLog(container, lines, seenKeys) {
+  if (!lines.length) {
+    if (!container.childElementCount) {
+      const p = el('span', null, 'no activity yet');
+      p.style.color = 'var(--muted)';
+      container.append(p);
+    }
+    return;
+  }
+
+  // Detect follow-mode: was user at (or near) the bottom before we mutated?
+  const wasAtBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 8;
+
+  // First paint (or logs were reset): remove the "no activity" placeholder if present.
+  if (container.childElementCount === 1 && !container.firstElementChild.classList.contains('line')) {
+    container.removeChild(container.firstElementChild);
+  }
+
+  let added = 0;
+  for (const line of lines) {
+    const key = line.time + '\x00' + line.message;
+    if (seenKeys.has(key)) continue;
+    seenKeys.add(key);
+    const kind = logKind(line.message);
+    const row = el('div', 'line ' + kind);
+    row.append(
+      el('span', 't', line.time),
+      el('span', 'm', line.message)
+    );
+    container.append(row);
+    added++;
+  }
+
+  // Cap DOM children so long-running lathes don't bloat the page.
+  const MAX = 80;
+  while (container.childElementCount > MAX) {
+    const first = container.firstElementChild;
+    // Also drop the corresponding key from seenKeys to keep it bounded.
+    const t = first.querySelector('.t')?.textContent || '';
+    const m = first.querySelector('.m')?.textContent || '';
+    seenKeys.delete(t + '\x00' + m);
+    container.removeChild(first);
+  }
+
+  // Auto-scroll to bottom ONLY when user was following. Respects manual scrolling up.
+  if (added > 0 && wasAtBottom) {
+    container.scrollTop = container.scrollHeight;
+  }
+}
+
+function updateFoot(container, l) {
+  while (container.firstChild) container.removeChild(container.firstChild);
+
+  const pidPill = el('span', 'pill', 'PID ' + l.pid + (l.agent_pid ? ' + ' + l.agent_pid : ''));
+  container.append(pidPill);
+  container.append(el('span', 'pill', l.mode || '—'));
+  if (l.branch) container.append(el('span', 'pill', l.branch));
 
   const prLink = prUrl(l);
-  const prHTML = prLink
-    ? '<a href="' + escapeHTML(prLink) + '" target="_blank" rel="noopener">PR #' + escapeHTML(l.pr_number) + ' ↗</a>'
-    : (l.pr_number ? 'PR #' + escapeHTML(l.pr_number) : '');
+  if (prLink) {
+    const a = el('a');
+    a.href = prLink;
+    a.target = '_blank';
+    a.rel = 'noopener';
+    a.textContent = 'PR #' + l.pr_number + ' ↗';
+    const wrap = el('span');
+    wrap.append(a);
+    container.append(wrap);
+  } else if (l.pr_number) {
+    container.append(el('span', null, 'PR #' + l.pr_number));
+  }
 
-  const rateLimit = l.rate_limited ? '<span class="rate-limit">rate limited</span>' : '';
+  const spacer = el('span', 'spacer');
+  spacer.style.flex = '1';
+  container.append(spacer);
 
-  return (
-    '<div class="card" data-pid="' + l.pid + '">' +
-      '<div class="card-head">' +
-        '<span class="dot pulse" style="background:var(--green);box-shadow:0 0 8px var(--green)"></span>' +
-        '<span class="project">' + escapeHTML(l.project) + '</span>' +
-        '<span class="phase ' + phaseClass(phase) + '">' + escapeHTML(phase) + '</span>' +
-        '<span class="spacer"></span>' +
-        rateLimit +
-      '</div>' +
-
-      '<div class="card-body">' +
-        '<div class="metric">' +
-          '<span class="label">Cycle</span>' +
-          '<span class="value big">' + (l.cycle || 0) + '</span>' +
-        '</div>' +
-        '<div class="metric">' +
-          '<span class="label">Uptime</span>' +
-          '<span class="value big">' + escapeHTML(fmtElapsed(l.elapsed_seconds)) + '</span>' +
-        '</div>' +
-        '<div class="metric">' +
-          '<span class="label">Pass@1</span>' +
-          '<span class="value">' + (passOneRate !== null ? passOneRate + '%' : '—') +
-          '<span class="sub">' + stats.pass_one + '/' + (totalScored || 0) + '</span></span>' +
-        '</div>' +
-        '<div class="metric">' +
-          '<span class="label">Verdicts</span>' +
-          '<div class="sparkline">' + (verdicts || '<span style="color:var(--muted);border:none">—</span>') + '</div>' +
-        '</div>' +
-      '</div>' +
-
-      '<div class="card-section">' +
-        '<div class="title">Recent Commits</div>' +
-        '<div class="commits">' + (commits || '<span style="color:var(--muted);font-size:11px">no commits yet</span>') + '</div>' +
-      '</div>' +
-
-      '<div class="card-section">' +
-        '<div class="title">Stream</div>' +
-        '<div class="log">' + (logs || '<span style="color:var(--muted)">no activity yet</span>') + '</div>' +
-      '</div>' +
-
-      '<div class="card-foot">' +
-        '<span class="pill">PID ' + l.pid + (l.agent_pid ? ' + ' + l.agent_pid : '') + '</span>' +
-        '<span class="pill">' + escapeHTML(l.mode || '—') + '</span>' +
-        (l.branch ? '<span class="pill">' + escapeHTML(l.branch) + '</span>' : '') +
-        (prHTML ? '<span>' + prHTML + '</span>' : '') +
-        '<span class="spacer" style="flex:1"></span>' +
-        '<span title="' + escapeHTML(l.cwd) + '" style="color:var(--dim)">' + escapeHTML(l.cwd) + '</span>' +
-      '</div>' +
-    '</div>'
-  );
+  const cwdSpan = el('span', null, l.cwd);
+  cwdSpan.style.color = 'var(--dim)';
+  cwdSpan.title = l.cwd;
+  container.append(cwdSpan);
 }
 
 function renderEmpty() {
-  return (
-    '<div class="empty">' +
-      '<h2>NO LATHES RUNNING</h2>' +
-      '<p>Start one with <code>lathe start</code> from any lathe-initialized project.</p>' +
-      '<p style="margin-top:16px;font-size:11px;color:var(--dim)">This dashboard shows every <code>lathe _run</code> process on this machine.</p>' +
-    '</div>'
-  );
+  const wrap = el('div', 'empty');
+  const h = el('h2', null, 'NO LATHES RUNNING');
+  const p1 = el('p');
+  p1.innerHTML = 'Start one with <code>lathe start</code> from any lathe-initialized project.';
+  const p2 = el('p');
+  p2.style.marginTop = '16px';
+  p2.style.fontSize = '11px';
+  p2.style.color = 'var(--dim)';
+  p2.innerHTML = 'This dashboard shows every <code>lathe _run</code> process on this machine.';
+  wrap.append(h, p1, p2);
+  return wrap;
 }
 
 function render(snap) {
   const lathes = snap.lathes || [];
 
-  // Header stats
-  $statActive.textContent = lathes.length;
-  let totalCycles = 0, passOne = 0, totalScored = 0;
+  // Top stats
+  setText($statActive, String(lathes.length));
+  let passOne = 0, totalScored = 0;
   for (const l of lathes) {
     const s = l.cycle_stats || {};
-    totalCycles += (s.pass_one || 0) + (s.pass_late || 0) + (s.failed || 0);
     passOne += (s.pass_one || 0);
     totalScored += (s.pass_one || 0) + (s.pass_late || 0) + (s.failed || 0);
   }
-  $statCycles.textContent = totalCycles;
-  $statPass1.textContent = totalScored > 0 ? Math.round((passOne / totalScored) * 100) + "%" : "—";
+  setText($statCycles, String(totalScored));
+  setText($statPass1, totalScored > 0 ? Math.round((passOne / totalScored) * 100) + '%' : '—');
 
-  // Body
   if (lathes.length === 0) {
-    $content.innerHTML = renderEmpty();
-    prevState = new Map();
+    // Clear grid, show empty state. No cards means no scroll positions to preserve.
+    while ($content.firstChild) $content.removeChild($content.firstChild);
+    $content.append(renderEmpty());
+    cards.clear();
+    grid = null;
   } else {
-    const nextState = new Map();
-    const html = ['<div class="grid">'];
-    for (const l of lathes) {
-      html.push(renderCard(l));
-      nextState.set(l.pid, l);
+    if (!grid || !grid.isConnected) {
+      while ($content.firstChild) $content.removeChild($content.firstChild);
+      grid = el('div', 'grid');
+      $content.append(grid);
+      cards.clear();
     }
-    html.push('</div>');
-    $content.innerHTML = html.join('');
 
-    // flash on change: cycle changed OR phase changed
-    for (const [pid, l] of nextState) {
-      const prev = prevState.get(pid);
-      if (prev && (prev.cycle !== l.cycle || prev.phase !== l.phase)) {
-        const el = $content.querySelector('.card[data-pid="' + pid + '"]');
-        if (el) {
-          el.classList.remove('flash');
-          void el.offsetWidth;
-          el.classList.add('flash');
-        }
+    const seen = new Set();
+    for (const l of lathes) {
+      seen.add(l.pid);
+      let entry = cards.get(l.pid);
+      if (!entry) {
+        entry = createCard(l);
+        cards.set(l.pid, entry);
+        grid.append(entry.el);
+      }
+      updateCard(entry, l);
+    }
+
+    for (const [pid, entry] of cards) {
+      if (!seen.has(pid)) {
+        entry.el.remove();
+        cards.delete(pid);
       }
     }
-    prevState = nextState;
   }
 
   const ts = new Date(snap.collected_at).toLocaleTimeString();
-  $updated.textContent = "updated " + ts;
+  setText($updated, 'updated ' + ts);
 }
 
 function setLive(ok, label) {
   $live.classList.toggle('ok', ok);
   $live.classList.toggle('err', !ok);
-  $liveLabel.textContent = label;
+  setText($liveLabel, label);
 }
 
 function connect() {
@@ -430,7 +593,6 @@ function connect() {
   };
 }
 
-// initial paint from /api/state for a snappy first load
 fetch('/api/state').then(r => r.json()).then(render).catch(() => {});
 connect();
 </script>
