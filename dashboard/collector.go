@@ -163,14 +163,43 @@ func getPidCwd(pid int) string {
 	return ""
 }
 
-// getPidElapsed returns elapsed seconds since PID started. Uses `ps -o etimes=`.
+// getPidElapsed returns elapsed seconds since PID started. Uses `ps -o etime=`
+// because `etimes` (raw-seconds variant) is Linux-only — BSD/macOS ps doesn't
+// support it and silently fails, returning 0. `etime` outputs `[[dd-]hh:]mm:ss`
+// on both platforms.
 func getPidElapsed(pid int) int64 {
-	out, err := exec.Command("ps", "-p", strconv.Itoa(pid), "-o", "etimes=").Output()
+	out, err := exec.Command("ps", "-p", strconv.Itoa(pid), "-o", "etime=").Output()
 	if err != nil {
 		return 0
 	}
-	n, _ := strconv.ParseInt(strings.TrimSpace(string(out)), 10, 64)
-	return n
+	return parseEtime(strings.TrimSpace(string(out)))
+}
+
+// parseEtime converts ps's etime format `[[dd-]hh:]mm:ss` into elapsed seconds.
+// Handles: "12:34" (mm:ss), "01:12:34" (hh:mm:ss), "2-01:12:34" (d-hh:mm:ss).
+func parseEtime(s string) int64 {
+	if s == "" {
+		return 0
+	}
+	var days int64
+	if i := strings.Index(s, "-"); i >= 0 {
+		days, _ = strconv.ParseInt(s[:i], 10, 64)
+		s = s[i+1:]
+	}
+	parts := strings.Split(s, ":")
+	var h, m, sec int64
+	switch len(parts) {
+	case 1:
+		sec, _ = strconv.ParseInt(parts[0], 10, 64)
+	case 2:
+		m, _ = strconv.ParseInt(parts[0], 10, 64)
+		sec, _ = strconv.ParseInt(parts[1], 10, 64)
+	case 3:
+		h, _ = strconv.ParseInt(parts[0], 10, 64)
+		m, _ = strconv.ParseInt(parts[1], 10, 64)
+		sec, _ = strconv.ParseInt(parts[2], 10, 64)
+	}
+	return days*86400 + h*3600 + m*60 + sec
 }
 
 // findAgentForCwd returns the PID of the claude/amp subprocess whose cwd matches.
