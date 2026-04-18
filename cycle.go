@@ -64,8 +64,15 @@ func runCycle(cycle int, tool string) error {
 		}
 
 		if !builderContributed && !verifierContributed {
-			log("Convergence reached at round %d. Both lenses stood down — goal complete.", round)
-			break
+			// Don't declare convergence while PRs from this dialog are still open.
+			// One more merge sweep, then check.
+			resolveStalePRs()
+			if openPRs := countOpenLathePRs(); openPRs > 0 {
+				log("No commits this round but %d lathe PR(s) still open — continuing dialog.", openPRs)
+			} else {
+				log("Convergence reached at round %d. Both lenses stood down — goal complete.", round)
+				break
+			}
 		}
 
 		if round < roundsPerCycle {
@@ -114,6 +121,11 @@ func runStep(cycle int, phase string, tool string, agentFn func() error) error {
 	waitForRateLimit()
 	setCycle(cycle, phase)
 	log("%s ...", phase)
+
+	// Clean up any lathe PRs from earlier steps whose CI has since completed.
+	// Without this, a PR whose CI took longer than this step's waitForCI budget
+	// sits orphaned forever.
+	resolveStalePRs()
 
 	if err := createSessionBranch(); err != nil {
 		return fmt.Errorf("create branch: %w", err)

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -148,6 +149,107 @@ func waitForCIDirect() {
 
 	ciResult = "timeout"
 	log("CI: timeout after %ds", ciWaitTimeout)
+}
+
+// resolveStalePRs finds any open lathe-branch PRs (from this or earlier steps)
+// and merges the ones whose CI has since turned green. Handles the case where
+// CI took longer than waitForCI's per-step budget — the PR sat green but unmerged
+// until the next step picked it up. Called at the top of each runStep.
+//
+// PRs still pending or failing are left open — the next agent sees them in the
+// snapshot's "My Open PRs" section and can decide what to do.
+func resolveStalePRs() {
+	s, _ := readSession()
+	if s.Mode != "branch" {
+		return
+	}
+
+	out, err := runCapture("gh", "pr", "list",
+		"--state", "open",
+		"--author", "@me",
+		"--json", "number,headRefName",
+		"--jq", `.[] | select(.headRefName | startswith("lathe/")) | [.number, .headRefName] | @tsv`)
+	if err != nil || strings.TrimSpace(out) == "" {
+		return
+	}
+
+	merged := 0
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		parts := strings.SplitN(line, "\t", 2)
+		if len(parts) < 2 {
+			continue
+		}
+		prNum := strings.TrimSpace(parts[0])
+		branch := strings.TrimSpace(parts[1])
+
+		switch probePRCI(prNum) {
+		case "pass":
+			log("Resolving stale PR #%s (%s) — CI passed, merging ...", prNum, branch)
+			if err := runSilent("gh", "pr", "merge", prNum, "--squash", "--delete-branch"); err != nil {
+				log("WARN: merge of stale PR #%s failed: %v", prNum, err)
+			} else {
+				_ = runSilent("git", "branch", "-D", branch)
+				merged++
+			}
+		case "fail":
+			log("Stale PR #%s (%s): CI failed — leaving open so next agent sees it.", prNum, branch)
+		case "pending":
+			log("Stale PR #%s (%s): CI still running — leaving open.", prNum, branch)
+		}
+	}
+
+	if merged > 0 {
+		base := s.BaseBranch
+		if base == "" {
+			base = "main"
+		}
+		_ = runSilent("git", "fetch", "origin", base)
+		_ = runSilent("git", "pull", "--ff-only", "origin", base)
+	}
+}
+
+// probePRCI returns "pass", "fail", or "pending" for a PR's current CI status.
+// Does not wait — a single probe.
+func probePRCI(prNumber string) string {
+	out, err := runCapture("gh", "pr", "checks", prNumber, "--json", "bucket")
+	if err != nil {
+		return "pending"
+	}
+	var checks []struct {
+		Bucket string `json:"bucket"`
+	}
+	if err := json.Unmarshal([]byte(out), &checks); err != nil {
+		return "pending"
+	}
+	if len(checks) == 0 {
+		return "pending"
+	}
+	for _, c := range checks {
+		if c.Bucket == "fail" {
+			return "fail"
+		}
+	}
+	for _, c := range checks {
+		if c.Bucket == "pending" {
+			return "pending"
+		}
+	}
+	return "pass"
+}
+
+// countOpenLathePRs returns how many open lathe-branch PRs (authored by us) exist.
+// Used as part of convergence detection — the dialog isn't done while PRs are still open.
+func countOpenLathePRs() int {
+	out, err := runCapture("gh", "pr", "list",
+		"--state", "open",
+		"--author", "@me",
+		"--json", "headRefName",
+		"--jq", `[.[] | select(.headRefName | startswith("lathe/"))] | length`)
+	if err != nil {
+		return 0
+	}
+	n, _ := strconv.Atoi(strings.TrimSpace(out))
+	return n
 }
 
 // autoMergeIfGreen merges the PR when CI passes and returns to base.
